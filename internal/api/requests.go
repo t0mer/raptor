@@ -156,6 +156,9 @@ func (a *API) downloadFile(w http.ResponseWriter, r *http.Request) {
 		ct = "application/octet-stream"
 	}
 	w.Header().Set("Content-Type", ct)
+	// Force download and stop browsers from MIME-sniffing attacker-controlled
+	// attachment content into an executable type.
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", f.Filename))
 	_, _ = w.Write(body)
 }
