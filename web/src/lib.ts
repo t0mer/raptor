@@ -1,6 +1,6 @@
 import type { CapturedRequest } from './api'
 
-// methodColor maps an HTTP method to Tailwind text/border classes for badges.
+// methodColor maps an HTTP method (or EMAIL/DNS badge) to badge classes.
 export function methodColor(method: string): string {
   switch (method.toUpperCase()) {
     case 'GET':
@@ -12,9 +12,27 @@ export function methodColor(method: string): string {
       return 'text-warn border-warn/40 bg-warn/10'
     case 'DELETE':
       return 'text-err border-err/40 bg-err/10'
+    case 'EMAIL':
+      return 'text-accent border-accent/40 bg-accent/10'
     default:
       return 'text-muted border-border bg-surface-2'
   }
+}
+
+// badgeLabel returns the short label shown for a request: the HTTP method,
+// "EMAIL", or the DNS query type.
+export function badgeLabel(r: CapturedRequest): string {
+  if (r.type === 'email') return 'EMAIL'
+  if (r.type === 'dns') return r.method || 'DNS'
+  return r.method || 'GET'
+}
+
+// checkColor maps an auth-check result to badge classes.
+export function checkColor(result: string): string {
+  if (result === 'pass' || result.startsWith('policy:none')) return 'text-ok border-ok/40 bg-ok/10'
+  if (result === 'fail' || result === 'softfail') return 'text-err border-err/40 bg-err/10'
+  if (result.startsWith('policy:')) return 'text-warn border-warn/40 bg-warn/10'
+  return 'text-muted border-border bg-surface-2'
 }
 
 export function relativeTime(iso: string): string {
@@ -35,6 +53,8 @@ export function shortId(id: string): string {
 
 // summarise returns a one-line preview of a request for the list.
 export function summarise(r: CapturedRequest): string {
+  if (r.type === 'email') return r.subject || r.sender || '(no subject)'
+  if (r.type === 'dns') return r.hostname || r.content
   if (r.content) return r.content.replace(/\s+/g, ' ').slice(0, 80)
   const q = r.query ? Object.keys(r.query) : []
   if (q.length) return `?${q.join(', ')}`

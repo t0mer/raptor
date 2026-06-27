@@ -1,5 +1,5 @@
 import type { CapturedRequest } from '../api'
-import { methodColor, relativeTime, summarise } from '../lib'
+import { badgeLabel, methodColor, relativeTime, summarise } from '../lib'
 
 interface Props {
   requests: CapturedRequest[]
@@ -36,10 +36,10 @@ export function RequestList({ requests, activeId, onSelect }: Props) {
               <div className="flex items-center gap-2">
                 <span
                   className={`text-[11px] font-semibold font-mono px-1.5 py-0.5 rounded border ${methodColor(
-                    r.method,
+                    badgeLabel(r),
                   )}`}
                 >
-                  {r.method || r.type.toUpperCase()}
+                  {badgeLabel(r)}
                 </span>
                 <span className="text-xs text-muted ml-auto shrink-0">
                   {relativeTime(r.created_at)}

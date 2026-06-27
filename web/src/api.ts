@@ -48,6 +48,13 @@ export interface CapturedRequest {
   sorting: number
   files?: RequestFile[]
   created_at: string
+  // Email-specific (type === 'email')
+  sender?: string
+  message_id?: string
+  destinations?: string
+  subject?: string
+  text_content?: string
+  checks?: Record<string, string>
 }
 
 export interface RequestPage {
