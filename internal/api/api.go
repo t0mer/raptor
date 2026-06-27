@@ -8,21 +8,23 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/t0mer/raptor/internal/actions"
+	"github.com/t0mer/raptor/internal/schedules"
 	"github.com/t0mer/raptor/internal/sse"
 	"github.com/t0mer/raptor/internal/store"
 )
 
 // API holds dependencies for the management handlers.
 type API struct {
-	store   *store.Store
-	baseURL string
-	hub     *sse.Hub
-	actions *actions.Service
+	store     *store.Store
+	baseURL   string
+	hub       *sse.Hub
+	actions   *actions.Service
+	schedules *schedules.Runner
 }
 
 // New constructs an API.
-func New(st *store.Store, baseURL string, hub *sse.Hub, actionsSvc *actions.Service) *API {
-	return &API{store: st, baseURL: baseURL, hub: hub, actions: actionsSvc}
+func New(st *store.Store, baseURL string, hub *sse.Hub, actionsSvc *actions.Service, runner *schedules.Runner) *API {
+	return &API{store: st, baseURL: baseURL, hub: hub, actions: actionsSvc, schedules: runner}
 }
 
 // Routes returns a chi router mounted under /api/v1.
@@ -30,6 +32,18 @@ func (a *API) Routes() chi.Router {
 	r := chi.NewRouter()
 
 	r.Get("/action-types", a.listActionTypes)
+
+	r.Route("/schedules", func(r chi.Router) {
+		r.Get("/", a.listSchedules)
+		r.Post("/", a.createSchedule)
+		r.Route("/{scheduleID}", func(r chi.Router) {
+			r.Get("/", a.getSchedule)
+			r.Put("/", a.updateSchedule)
+			r.Delete("/", a.deleteSchedule)
+			r.Get("/runs", a.listScheduleRuns)
+			r.Post("/run", a.runScheduleNow)
+		})
+	})
 
 	r.Route("/groups", func(r chi.Router) {
 		r.Get("/", a.listGroups)
@@ -58,6 +72,7 @@ func (a *API) Routes() chi.Router {
 				r.Delete("/{actionID}", a.deleteAction)
 			})
 			r.Post("/test-action", a.testAction)
+			r.Post("/replay", a.replayRequests)
 
 			r.Route("/requests", func(r chi.Router) {
 				r.Get("/", a.listRequests)

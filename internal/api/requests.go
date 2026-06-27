@@ -193,19 +193,23 @@ func (a *API) attachFiles(r *http.Request, req *models.Request) {
 // query parameters into a single combined filter.
 func requestFilter(r *http.Request) search.Filter {
 	q := r.URL.Query()
-	f := search.Parse(q.Get("q"), time.Now().UTC())
+	return filterFrom(q.Get("q"), q.Get("date_from"), q.Get("date_to"))
+}
 
+// filterFrom combines a search-DSL query with optional ISO date bounds.
+func filterFrom(query, dateFrom, dateTo string) search.Filter {
+	f := search.Parse(query, time.Now().UTC())
 	clauses := make([]string, 0, 3)
 	args := make([]any, 0, 3)
 	if f.SQL != "" {
 		clauses = append(clauses, f.SQL)
 		args = append(args, f.Args...)
 	}
-	if t, ok := parseDateParam(q.Get("date_from")); ok {
+	if t, ok := parseDateParam(dateFrom); ok {
 		clauses = append(clauses, "created_at >= ?")
 		args = append(args, t)
 	}
-	if t, ok := parseDateParam(q.Get("date_to")); ok {
+	if t, ok := parseDateParam(dateTo); ok {
 		clauses = append(clauses, "created_at <= ?")
 		args = append(args, t)
 	}

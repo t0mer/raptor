@@ -73,6 +73,120 @@ paths:
       responses:
         "204": { description: Deleted }
         "404": { description: Not found }
+  /schedules:
+    get:
+      summary: List schedules
+      operationId: listSchedules
+      responses:
+        "200":
+          description: Schedules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/Schedule" } }
+    post:
+      summary: Create a schedule
+      operationId: createSchedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScheduleInput" }
+      responses:
+        "201":
+          description: Created schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+  /schedules/{scheduleID}:
+    parameters:
+      - { name: scheduleID, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Get a schedule
+      operationId: getSchedule
+      responses:
+        "200":
+          description: Schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+    put:
+      summary: Update a schedule
+      operationId: updateSchedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScheduleInput" }
+      responses:
+        "200":
+          description: Updated schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+    delete:
+      summary: Delete a schedule
+      operationId: deleteSchedule
+      responses:
+        "204": { description: Deleted }
+  /schedules/{scheduleID}/runs:
+    parameters:
+      - { name: scheduleID, in: path, required: true, schema: { type: string } }
+    get:
+      summary: List a schedule's run history
+      operationId: listScheduleRuns
+      responses:
+        "200":
+          description: Runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/ScheduleRun" } }
+  /schedules/{scheduleID}/run:
+    parameters:
+      - { name: scheduleID, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Run a schedule immediately
+      operationId: runScheduleNow
+      responses:
+        "200":
+          description: Run result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScheduleRun" }
+  /tokens/{tokenID}/replay:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+    post:
+      summary: Replay a subset of captured requests to a target URL
+      operationId: replayRequests
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_url]
+              properties:
+                target_url: { type: string }
+                q: { type: string, description: "search DSL to select the subset" }
+                date_from: { type: string }
+                date_to: { type: string }
+                limit: { type: integer }
+      responses:
+        "200":
+          description: Replay counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  replayed: { type: integer }
+                  failed: { type: integer }
   /action-types:
     get:
       summary: List available Custom Action type names
@@ -518,6 +632,56 @@ components:
         position: { type: integer }
         output: { type: string }
         error: { type: string }
+        created_at: { type: string, format: date-time }
+    ScheduleInput:
+      type: object
+      required: [cron]
+      properties:
+        token_id: { type: string }
+        name: { type: string }
+        cron: { type: string, description: "5-field cron expression" }
+        target_url: { type: string }
+        method: { type: string }
+        body: { type: string }
+        run_actions: { type: boolean, description: "run the token's action chain instead of an HTTP check" }
+        expect_status: { type: integer, description: "0 = any 2xx is OK" }
+        keyword: { type: string, description: "alert if the response body lacks this" }
+        check_ssl: { type: boolean }
+        ssl_days: { type: integer }
+        notify_url: { type: string, description: "Shoutrrr alert URL; write-only, never returned" }
+        enabled: { type: boolean }
+    Schedule:
+      type: object
+      properties:
+        uuid: { type: string }
+        token_id: { type: string }
+        name: { type: string }
+        cron: { type: string }
+        target_url: { type: string }
+        method: { type: string }
+        body: { type: string }
+        run_actions: { type: boolean }
+        expect_status: { type: integer }
+        keyword: { type: string }
+        check_ssl: { type: boolean }
+        ssl_days: { type: integer }
+        has_notify: { type: boolean, description: "whether an alert URL is configured (masked)" }
+        enabled: { type: boolean }
+        last_run: { type: string, format: date-time, nullable: true }
+        next_run: { type: string, format: date-time, nullable: true }
+        last_status: { type: string, enum: [ok, alert, error] }
+        last_message: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ScheduleRun:
+      type: object
+      properties:
+        id: { type: string }
+        schedule_id: { type: string }
+        status: { type: string, enum: [ok, alert, error] }
+        status_code: { type: integer }
+        message: { type: string }
+        duration_ms: { type: integer }
         created_at: { type: string, format: date-time }
   securitySchemes:
     ApiKey:

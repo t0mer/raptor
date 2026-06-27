@@ -90,7 +90,8 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		capture.WithFilesDir(filepath.Join(cfg.Data, "files")),
 		capture.WithActions(actionsSvc),
 	)
-	srv := server.New(cfg, st, capturer, hub, actionsSvc)
+	scheduleRunner := schedules.New(st, actionsSvc, schedules.WithLogger(logger))
+	srv := server.New(cfg, st, capturer, hub, actionsSvc, scheduleRunner)
 
 	httpSrv := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
@@ -100,7 +101,6 @@ func run(cfg config.Config, logger *slog.Logger) error {
 
 	emailSrv := email.New(capturer, cfg.EmailDomain, email.WithLogger(logger))
 	dnsSrv := dnssrv.New(capturer, cfg.DNSDomain, dnssrv.WithLogger(logger))
-	scheduleRunner := schedules.New(st, actionsSvc, schedules.WithLogger(logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
