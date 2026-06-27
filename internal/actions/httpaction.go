@@ -107,11 +107,14 @@ func (h *httpRequest) resolve(ec *ExecContext) (method, body, contentType string
 }
 
 // copyForwardHeaders copies the captured request's headers onto the outbound
-// request, skipping hop-by-hop and host headers.
+// request, skipping hop-by-hop and host headers. Credential-bearing headers
+// (Authorization, Cookie, Proxy-Authorization) are deliberately NOT forwarded,
+// so the original caller's secrets are not leaked to the forward target.
 func copyForwardHeaders(req *http.Request, src *models.Request) {
 	skip := map[string]bool{
 		"host": true, "content-length": true, "connection": true,
 		"transfer-encoding": true, "keep-alive": true,
+		"authorization": true, "cookie": true, "proxy-authorization": true,
 	}
 	for k, vals := range src.Headers {
 		if skip[strings.ToLower(k)] {

@@ -28,19 +28,22 @@ func WithHTTPClient(c *http.Client) Option {
 }
 
 // WithSSRFLists restricts outbound HTTP/script hosts. allow (if non-empty) is a
-// strict allow-list; deny always blocks. See ssrf.go.
-func WithSSRFLists(allow, deny []string) Option {
-	return func(e *Engine) { e.ssrf = newSSRFGuard(allow, deny) }
+// strict allow-list; deny always blocks. Internal targets are blocked unless
+// allowInternal is true. See ssrf.go.
+func WithSSRFLists(allow, deny []string, allowInternal bool) Option {
+	return func(e *Engine) { e.ssrf = newSSRFGuard(allow, deny, allowInternal) }
 }
 
-// New builds an Engine.
+// New builds an Engine. Unless WithHTTPClient overrides it, the outbound HTTP
+// client is constructed from the SSRF guard so the deny-list is enforced against
+// resolved IPs and across redirects.
 func New(opts ...Option) *Engine {
-	e := &Engine{
-		httpClient: &http.Client{Timeout: 15 * time.Second},
-		ssrf:       newSSRFGuard(nil, nil),
-	}
+	e := &Engine{ssrf: newSSRFGuard(nil, nil, false)}
 	for _, o := range opts {
 		o(e)
+	}
+	if e.httpClient == nil {
+		e.httpClient = e.ssrf.client(15 * time.Second)
 	}
 	return e
 }

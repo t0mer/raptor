@@ -60,19 +60,25 @@ func TestConditionsStopAndSkip(t *testing.T) {
 }
 
 func TestHTTPRequestForward(t *testing.T) {
-	var gotMethod, gotBody string
+	var gotMethod, gotBody, gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		b := make([]byte, r.ContentLength)
 		r.Body.Read(b)
 		gotBody = string(b)
+		gotAuth = r.Header.Get("Authorization")
 		w.WriteHeader(202)
 		w.Write([]byte(`{"ok":true}`))
 	}))
 	defer srv.Close()
 
-	e := New()
-	ec := e.NewContext(&models.Request{Method: "POST", Content: "payload", Headers: map[string][]string{}}, testToken())
+	// httptest binds loopback, so internal targets must be permitted here.
+	e := New(WithSSRFLists(nil, nil, true))
+	ec := e.NewContext(&models.Request{
+		Method:  "POST",
+		Content: "payload",
+		Headers: map[string][]string{"Authorization": {"Bearer secret"}, "X-Event": {"push"}},
+	}, testToken())
 	res := e.Execute(context.Background(), []*models.Action{
 		act("http_request", map[string]any{"url": srv.URL, "mode": "forward"}),
 	}, ec)
@@ -82,18 +88,38 @@ func TestHTTPRequestForward(t *testing.T) {
 	if gotMethod != "POST" || gotBody != "payload" {
 		t.Errorf("forwarded method/body = %q/%q", gotMethod, gotBody)
 	}
+	if gotAuth != "" {
+		t.Errorf("Authorization header leaked to forward target: %q", gotAuth)
+	}
 	if ec.Vars["response.status"] != "202" {
 		t.Errorf("response.status = %q, want 202", ec.Vars["response.status"])
 	}
 }
 
-func TestHTTPRequestSSRFBlocked(t *testing.T) {
-	e := New(WithSSRFLists(nil, []string{"169.254.169.254", "metadata.internal"}))
+func TestHTTPRequestSSRFDenyList(t *testing.T) {
+	e := New(WithSSRFLists(nil, []string{"169.254.169.254", "metadata.internal"}, true))
 	ec := e.NewContext(&models.Request{}, testToken())
 	res := e.Execute(context.Background(), []*models.Action{
 		act("http_request", map[string]any{"url": "http://169.254.169.254/latest/meta-data/"}),
 	}, ec)
 	if res[0].Err == nil {
-		t.Error("expected SSRF block error")
+		t.Error("expected SSRF deny-list block")
+	}
+}
+
+func TestHTTPRequestInternalBlockedByDefault(t *testing.T) {
+	// Default guard blocks internal/loopback targets even with no deny list.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	e := New() // secure default: allowInternal = false
+	ec := e.NewContext(&models.Request{}, testToken())
+	res := e.Execute(context.Background(), []*models.Action{
+		act("http_request", map[string]any{"url": srv.URL, "method": "GET"}),
+	}, ec)
+	if res[0].Err == nil {
+		t.Error("expected internal target to be blocked by default")
 	}
 }

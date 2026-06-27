@@ -1,23 +1,29 @@
 package actions
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // ssrfGuard restricts which hosts outbound actions (http_request, script) may
 // reach. When allow is non-empty it is a strict allow-list of host suffixes;
-// deny host suffixes always block. With both empty, all hosts are permitted
-// (self-hosters opt in via --action-allow / --action-deny).
+// deny host suffixes always block. By default, requests to internal targets
+// (loopback, link-local incl. cloud metadata, and private ranges) are blocked
+// — set allowInternal (via --action-allow-internal) to permit them.
 type ssrfGuard struct {
-	allow []string
-	deny  []string
+	allow         []string
+	deny          []string
+	allowInternal bool
 }
 
-func newSSRFGuard(allow, deny []string) *ssrfGuard {
-	return &ssrfGuard{allow: normalize(allow), deny: normalize(deny)}
+func newSSRFGuard(allow, deny []string, allowInternal bool) *ssrfGuard {
+	return &ssrfGuard{allow: normalize(allow), deny: normalize(deny), allowInternal: allowInternal}
 }
 
 func normalize(list []string) []string {
@@ -29,6 +35,86 @@ func normalize(list []string) []string {
 		}
 	}
 	return out
+}
+
+// active reports whether any allow/deny rule is configured.
+func (g *ssrfGuard) active() bool { return len(g.allow) > 0 || len(g.deny) > 0 }
+
+// client builds an HTTP client that enforces the guard robustly: the deny-list
+// is checked against the *resolved* IP at dial time (defeating DNS-rebind and
+// IP-encoding bypasses), and every redirect target is re-validated.
+func (g *ssrfGuard) client(timeout time.Duration) *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+		Control: func(_, address string, _ syscall.RawConn) error {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				host = address
+			}
+			return g.checkIP(net.ParseIP(host))
+		},
+	}
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: time.Second,
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			return g.check(req.URL.String())
+		},
+	}
+}
+
+// checkIP blocks a connection whose resolved IP matches a deny entry or, unless
+// allowInternal is set, targets an internal range. This runs after DNS
+// resolution, so a hostname that resolves to a denied/internal address (or an
+// obfuscated/encoded IP) is still caught — defeating DNS-rebind and the
+// cloud-metadata SSRF vector by default.
+func (g *ssrfGuard) checkIP(ip net.IP) error {
+	if ip == nil {
+		return nil
+	}
+	for _, d := range g.deny {
+		if ipMatchesPattern(ip, d) {
+			return fmt.Errorf("resolved IP %s is denied", ip)
+		}
+	}
+	if !g.allowInternal && isInternalIP(ip) {
+		return fmt.Errorf("resolved IP %s is internal (blocked; set --action-allow-internal to permit)", ip)
+	}
+	return nil
+}
+
+// isInternalIP reports whether an IP is loopback, link-local (incl. the cloud
+// metadata 169.254.169.254), private (RFC1918 / ULA), unspecified or multicast.
+func isInternalIP(ip net.IP) bool {
+	return ip.IsLoopback() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsPrivate() ||
+		ip.IsUnspecified() ||
+		ip.IsMulticast()
+}
+
+func ipMatchesPattern(ip net.IP, pattern string) bool {
+	if _, cidr, err := net.ParseCIDR(pattern); err == nil {
+		return cidr.Contains(ip)
+	}
+	if pip := net.ParseIP(pattern); pip != nil {
+		return pip.Equal(ip)
+	}
+	return false
 }
 
 // check validates a target URL against the guard, returning an error if blocked.
