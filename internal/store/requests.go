@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/t0mer/raptor/internal/models"
@@ -76,15 +77,24 @@ func (s *Store) GetRequest(ctx context.Context, uuid string) (*models.Request, e
 // ListRequests returns a token's requests, newest first, with limit/offset
 // paging. A limit <= 0 defaults to 50; it is capped at 100.
 func (s *Store) ListRequests(ctx context.Context, tokenID string, limit, offset int) ([]*models.Request, error) {
+	return s.ListRequestsWhere(ctx, tokenID, "", nil, limit, offset)
+}
+
+// ListRequestsWhere is ListRequests with an additional caller-supplied,
+// parameterised WHERE fragment (e.g. from the search DSL). where is ANDed with
+// the token filter; whereArgs supply its placeholders. An empty where matches all.
+func (s *Store) ListRequestsWhere(ctx context.Context, tokenID, where string, whereArgs []any, limit, offset int) ([]*models.Request, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	if limit > 100 {
 		limit = 100
 	}
+	clause, args := composeWhere(tokenID, where, whereArgs)
+	args = append(args, limit, offset)
+
 	rows, err := s.db.QueryContext(ctx, `SELECT `+requestColumns+`
-		FROM requests WHERE token_id = ? ORDER BY sorting DESC LIMIT ? OFFSET ?`,
-		tokenID, limit, offset)
+		FROM requests WHERE `+clause+` ORDER BY sorting DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query requests: %w", err)
 	}
@@ -110,8 +120,14 @@ func (s *Store) LatestRequest(ctx context.Context, tokenID string) (*models.Requ
 
 // CountRequests returns the number of requests stored for a token.
 func (s *Store) CountRequests(ctx context.Context, tokenID string) (int, error) {
+	return s.CountRequestsWhere(ctx, tokenID, "", nil)
+}
+
+// CountRequestsWhere counts requests matching an additional WHERE fragment.
+func (s *Store) CountRequestsWhere(ctx context.Context, tokenID, where string, whereArgs []any) (int, error) {
+	clause, args := composeWhere(tokenID, where, whereArgs)
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM requests WHERE token_id = ?`, tokenID).Scan(&n)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM requests WHERE `+clause, args...).Scan(&n)
 	return n, err
 }
 
@@ -131,6 +147,30 @@ func (s *Store) DeleteAllRequests(ctx context.Context, tokenID string) (int64, e
 		return 0, fmt.Errorf("delete requests: %w", err)
 	}
 	return res.RowsAffected()
+}
+
+// DeleteRequestsWhere deletes the subset of a token's requests matching an
+// additional WHERE fragment and returns the number removed. An empty where
+// deletes all of the token's requests.
+func (s *Store) DeleteRequestsWhere(ctx context.Context, tokenID, where string, whereArgs []any) (int64, error) {
+	clause, args := composeWhere(tokenID, where, whereArgs)
+	res, err := s.db.ExecContext(ctx, `DELETE FROM requests WHERE `+clause, args...)
+	if err != nil {
+		return 0, fmt.Errorf("delete requests subset: %w", err)
+	}
+	return res.RowsAffected()
+}
+
+// composeWhere builds the full WHERE clause and argument list, always scoping to
+// the token and ANDing any caller-supplied fragment.
+func composeWhere(tokenID, where string, whereArgs []any) (string, []any) {
+	clause := "token_id = ?"
+	args := []any{tokenID}
+	if strings.TrimSpace(where) != "" {
+		clause += " AND (" + where + ")"
+		args = append(args, whereArgs...)
+	}
+	return clause, args
 }
 
 // pruneRequests keeps only the newest `keep` requests for a token.

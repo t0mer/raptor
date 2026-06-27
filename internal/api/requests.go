@@ -8,10 +8,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/t0mer/raptor/internal/models"
+	"github.com/t0mer/raptor/internal/search"
 	"github.com/t0mer/raptor/internal/store"
 )
 
@@ -32,12 +34,13 @@ func (a *API) listRequests(w http.ResponseWriter, r *http.Request) {
 		perPage = 100
 	}
 
-	reqs, err := a.store.ListRequests(r.Context(), tok.UUID, perPage, (page-1)*perPage)
+	filter := requestFilter(r)
+	reqs, err := a.store.ListRequestsWhere(r.Context(), tok.UUID, filter.SQL, filter.Args, perPage, (page-1)*perPage)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list requests")
 		return
 	}
-	total, err := a.store.CountRequests(r.Context(), tok.UUID)
+	total, err := a.store.CountRequestsWhere(r.Context(), tok.UUID, filter.SQL, filter.Args)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to count requests")
 		return
@@ -111,12 +114,16 @@ func (a *API) deleteRequest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// deleteAllRequests deletes a token's requests. With a search query (`q`) or
+// `date_from`/`date_to` bounds it deletes only the matching subset; with none it
+// deletes all.
 func (a *API) deleteAllRequests(w http.ResponseWriter, r *http.Request) {
 	tok, ok := a.loadToken(w, r)
 	if !ok {
 		return
 	}
-	n, err := a.store.DeleteAllRequests(r.Context(), tok.UUID)
+	filter := requestFilter(r)
+	n, err := a.store.DeleteRequestsWhere(r.Context(), tok.UUID, filter.SQL, filter.Args)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete requests")
 		return
@@ -177,6 +184,43 @@ func (a *API) attachFiles(r *http.Request, req *models.Request) {
 	if err == nil {
 		req.Files = files
 	}
+}
+
+// requestFilter compiles the search DSL (`q`) and optional `date_from`/`date_to`
+// query parameters into a single combined filter.
+func requestFilter(r *http.Request) search.Filter {
+	q := r.URL.Query()
+	f := search.Parse(q.Get("q"), time.Now().UTC())
+
+	clauses := make([]string, 0, 3)
+	args := make([]any, 0, 3)
+	if f.SQL != "" {
+		clauses = append(clauses, f.SQL)
+		args = append(args, f.Args...)
+	}
+	if t, ok := parseDateParam(q.Get("date_from")); ok {
+		clauses = append(clauses, "created_at >= ?")
+		args = append(args, t)
+	}
+	if t, ok := parseDateParam(q.Get("date_to")); ok {
+		clauses = append(clauses, "created_at <= ?")
+		args = append(args, t)
+	}
+	return search.Filter{SQL: strings.Join(clauses, " AND "), Args: args}
+}
+
+// parseDateParam parses a YYYY-MM-DD or RFC3339 date into a comparable
+// RFC3339Nano string (matching how created_at is stored).
+func parseDateParam(s string) (string, bool) {
+	if s == "" {
+		return "", false
+	}
+	for _, layout := range []string{time.RFC3339, "2006-01-02"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC().Format(time.RFC3339Nano), true
+		}
+	}
+	return "", false
 }
 
 func queryInt(r *http.Request, key string, def int) int {

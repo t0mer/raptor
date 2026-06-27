@@ -100,6 +100,16 @@ paths:
       parameters:
         - { name: page, in: query, schema: { type: integer, default: 1 } }
         - { name: per_page, in: query, schema: { type: integer, default: 50, maximum: 100 } }
+        - name: q
+          in: query
+          description: >
+            Search DSL. Free text matches content; field filters include
+            `content:`, `method:`, `type:`, `ip:`, `host:`, `url:`, `query:`,
+            `headers.<key>:`, `_exists_:<field>`, and
+            `created_at:[* TO now-14d]`. Terms are ANDed; quote values with spaces.
+          schema: { type: string }
+        - { name: date_from, in: query, description: "ISO date/datetime lower bound", schema: { type: string } }
+        - { name: date_to, in: query, description: "ISO date/datetime upper bound", schema: { type: string } }
       responses:
         "200":
           description: Page of requests
@@ -115,8 +125,12 @@ paths:
                   page: { type: integer }
                   per_page: { type: integer }
     delete:
-      summary: Delete all requests for the token
+      summary: Delete requests for the token (all, or a `q`/`date_from`/`date_to` subset)
       operationId: deleteAllRequests
+      parameters:
+        - { name: q, in: query, description: "search DSL; deletes only matching requests", schema: { type: string } }
+        - { name: date_from, in: query, schema: { type: string } }
+        - { name: date_to, in: query, schema: { type: string } }
       responses:
         "200":
           description: Number deleted

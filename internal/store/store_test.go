@@ -175,6 +175,50 @@ func TestRequestLimitPrune(t *testing.T) {
 	}
 }
 
+func TestFilteredListCountDelete(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	tok := newToken()
+	if err := s.CreateToken(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	for i, m := range []string{"GET", "POST", "POST", "DELETE"} {
+		req := &models.Request{UUID: uuid.NewString(), TokenID: tok.UUID, Method: m, Sorting: int64(i + 1)}
+		if err := s.CreateRequest(ctx, req, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Filtered count + list scoped by an extra WHERE fragment.
+	n, err := s.CountRequestsWhere(ctx, tok.UUID, "method = ?", []any{"POST"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Errorf("filtered count = %d, want 2", n)
+	}
+	list, err := s.ListRequestsWhere(ctx, tok.UUID, "method = ?", []any{"POST"}, 50, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 {
+		t.Errorf("filtered list = %d, want 2", len(list))
+	}
+
+	// Subset delete removes only matching rows.
+	deleted, err := s.DeleteRequestsWhere(ctx, tok.UUID, "method = ?", []any{"POST"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != 2 {
+		t.Errorf("deleted = %d, want 2", deleted)
+	}
+	remaining, _ := s.CountRequests(ctx, tok.UUID)
+	if remaining != 2 {
+		t.Errorf("remaining = %d, want 2", remaining)
+	}
+}
+
 func TestListRequestsPaging(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
