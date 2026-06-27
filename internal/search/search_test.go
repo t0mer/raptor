@@ -117,6 +117,19 @@ func TestCreatedAtBothBounds(t *testing.T) {
 	}
 }
 
+func TestMalformedRangeDoesNotPanic(t *testing.T) {
+	// Malformed bounds must be ignored, never panic.
+	for _, q := range []string{
+		"created_at:[now- TO *]",
+		"created_at:[now TO now+]",
+		"created_at:[bogus TO bogus]",
+		"created_at:[]",
+		"created_at:",
+	} {
+		_ = Parse(q, anchor) // must not panic
+	}
+}
+
 func TestNoSQLInjectionInValues(t *testing.T) {
 	// A malicious value must be bound as an argument, never inlined. Quote it so
 	// it stays a single token despite the spaces.

@@ -149,6 +149,10 @@ func parseBound(s string, now time.Time) (time.Time, bool) {
 		if rest == "" {
 			return now, true
 		}
+		// Need at least sign + digit + unit, e.g. "-1d".
+		if len(rest) < 3 {
+			return time.Time{}, false
+		}
 		sign := time.Duration(1)
 		switch rest[0] {
 		case '-':
