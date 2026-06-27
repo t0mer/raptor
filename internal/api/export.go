@@ -36,9 +36,10 @@ func (a *API) exportCSV(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, req := range reqs {
 			_ = cw.Write([]string{
-				req.UUID, req.Type, req.Method, req.IP, req.Hostname, req.UserAgent,
-				req.URL, strconv.Itoa(req.Size), req.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-				req.Content,
+				csvSafe(req.UUID), csvSafe(req.Type), csvSafe(req.Method), csvSafe(req.IP),
+				csvSafe(req.Hostname), csvSafe(req.UserAgent), csvSafe(req.URL),
+				strconv.Itoa(req.Size), req.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+				csvSafe(req.Content),
 			})
 		}
 		cw.Flush()
@@ -46,4 +47,19 @@ func (a *API) exportCSV(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+}
+
+// csvSafe neutralises spreadsheet formula injection. Captured request data is
+// fully attacker-controlled, so any cell beginning with a formula trigger
+// (= + - @, or a leading tab/CR) is prefixed with a single quote, which Excel
+// and Google Sheets treat as a literal-text marker.
+func csvSafe(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + s
+	}
+	return s
 }
