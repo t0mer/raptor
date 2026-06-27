@@ -5,10 +5,11 @@ unique URLs that capture, inspect and (in later phases) transform, automate and
 forward inbound HTTP requests, emails and DNS queries — all from a single static
 binary with an embedded UI.
 
-> Raptor is built in reviewable phases. **Phases 1–3 (current)** deliver the core
+> Raptor is built in reviewable phases. **Phases 1–4 (current)** deliver the core
 > HTTP capture engine, inspection API, a real-time web inbox, request search,
-> groups, a control panel, and **inbound email + DNS capture**. Custom actions,
-> schedules and accounts land in later phases (see [Roadmap](#roadmap)).
+> groups, a control panel, **inbound email + DNS capture**, and a **Custom Actions
+> engine with scripting**. Schedules and accounts land in later phases (see
+> [Roadmap](#roadmap)).
 
 ## Screenshots
 
@@ -29,6 +30,10 @@ binary with an embedded UI.
 | Email (rendered + auth checks) | DNS query |
 | --- | --- |
 | ![Captured email with sandboxed HTML body and DKIM/SPF/DMARC results](assets/screenshots/email-detail-dark.png) | ![Captured DNS query detail](assets/screenshots/dns-detail-light.png) |
+
+### Custom Actions
+
+![Custom Actions editor — an ordered chain that runs on every request](assets/screenshots/actions-editor-dark.png)
 
 ### Mobile (responsive)
 
@@ -93,6 +98,39 @@ forward in front (`25 → 2525`, `53 → 5354`), and point DNS at your host:
 
 Override the suffixes with `--email-domain` / `--dns-domain` to use your own.
 
+### Phase 4 — Custom Actions engine
+
+Enable **Actions** on a URL to run an ordered chain on every captured request.
+Actions share variables (`$name$`, plus `$request.content$`, `$request.method$`,
+`$request.query.x$`, `$request.header.x$`), can gate or stop the chain, extract
+data, call out over HTTP, and build the response.
+
+Action types in this release:
+
+| Type | Purpose |
+| --- | --- |
+| `set_variable` | Assign an (interpolated) value to a variable |
+| `modify_response` | Override response status / body / content-type / headers |
+| `conditions` | Gate the chain (`stop`/`skip`) on `input <op> value` |
+| `extract_json` | Pull a value out of JSON via a [gjson](https://github.com/tidwall/gjson) path |
+| `extract_regex` | Capture a regex group into a variable |
+| `http_request` | Call another URL (JSON or `forward` mode); response → `$response.body$` |
+| `script` | Run JavaScript ([goja](https://github.com/dop251/goja)) with `respond()`, `get`/`set`, `stop()`, `dont_save()`, `echo()`, `JSON` |
+| `dont_save` | Record actions but don't persist the request |
+| `stop` | Halt the chain |
+
+Each request stores a per-action **run log** (visible in the detail pane and
+replayable). Test a single action against your latest request from the editor
+before saving.
+
+> **Security.** `http_request` and `script` can reach other hosts. Internal
+> targets (loopback, link-local incl. cloud metadata `169.254.169.254`, and
+> private ranges) are **blocked by default** and the deny-list is enforced against
+> the *resolved* IP and across redirects. Use `--action-allow` / `--action-deny`
+> to scope hosts, or `--action-allow-internal` to permit internal targets.
+> `forward` mode omits `Authorization`/`Cookie` headers so caller secrets are not
+> leaked.
+
 ## Quick start
 
 ### Docker Compose
@@ -144,6 +182,9 @@ It appears in the inbox instantly.
 | `--geoip-db` | `RAPTOR_GEOIP_DB` | — | Optional MaxMind GeoLite2 DB for request geo |
 | `--log-level` | `RAPTOR_LOG_LEVEL` | `info` | `debug` \| `info` \| `warning` \| `error` |
 | `--require-auth` | `RAPTOR_REQUIRE_AUTH` | `false` | Gate the management API behind an API key (Phase 6) |
+| `--action-allow` | `RAPTOR_ACTION_ALLOW` | — | Comma-separated allow-list of hosts for outbound actions |
+| `--action-deny` | `RAPTOR_ACTION_DENY` | — | Comma-separated deny-list of hosts for outbound actions |
+| `--action-allow-internal` | `RAPTOR_ACTION_ALLOW_INTERNAL` | `false` | Permit outbound actions to reach internal/loopback hosts |
 | `--version` | — | — | Print version and exit |
 
 **Precedence:** environment variable → `--flag` → built-in default (an env var,
@@ -170,6 +211,11 @@ Key endpoints:
 | `GET` | `/api/v1/tokens/{id}/stream` | SSE stream of new requests |
 | `GET` `POST` | `/api/v1/groups` | List / create groups |
 | `PUT` `DELETE` | `/api/v1/groups/{id}` | Update / delete a group |
+| `GET` `POST` | `/api/v1/tokens/{id}/actions` | List / add Custom Actions |
+| `PUT` `DELETE` | `/api/v1/tokens/{id}/actions/{aid}` | Update / delete an action |
+| `POST` | `/api/v1/tokens/{id}/test-action` | Test an action against the latest request |
+| `GET` | `/api/v1/tokens/{id}/requests/{rid}/action-runs` | Per-request action run log |
+| `POST` | `/api/v1/tokens/{id}/requests/{rid}/execute` | Replay the action chain |
 
 When `--require-auth` is set, send `Api-Key: <uuid>`. With no key configured the
 API is open (documented first-run bootstrap mode).
@@ -192,9 +238,14 @@ is embedded into the Go binary via `embed.FS`, so production ships a single file
 | **1 — Core capture** *(done)* | URLs, HTTP capture, inspection API, real-time SPA inbox, default responses, CSV, metrics |
 | **2 — Response control** *(done)* | Request search DSL, subset delete, groups, control panel |
 | **3 — Email + DNS** *(done)* | Inbound SMTP (`@emailhook`) capture with DKIM/SPF/DMARC, inbound DNS (`.dnshook`) capture |
-| 4 — Custom Actions | Action chain engine, variables, conditions, scripting |
+| **4 — Custom Actions** *(done)* | Action chain engine, variables, conditions, extraction, http_request, JS scripting, run log + replay |
 | 5 — Schedules & replay | Cron schedules, alerting, request replay, CLI forwarding |
 | 6 — Accounts & org | API keys, multi-user, SAML SSO, custom domains |
+
+> Phase 4 ships the engine and a core action set. Queued/delayed/repeating
+> execution and the integration catalogue (Slack, S3, SFTP, send-email, mock,
+> CSV/PDF/image, templates, …) build on the same `Action` interface and are
+> tracked for a follow-up.
 
 ## License
 
