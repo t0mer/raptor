@@ -13,6 +13,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/pflag v1.0.10
 	github.com/swaggest/swgui v1.8.8
+	github.com/tidwall/gjson v1.19.0
 	modernc.org/sqlite v1.53.0
 )
 
@@ -29,6 +30,8 @@ require (
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/vearutop/statigz v1.4.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
