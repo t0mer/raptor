@@ -166,7 +166,11 @@ func (c *Capturer) writeResponse(w http.ResponseWriter, token *models.Token, sta
 	}
 
 	if token.Redirect != "" {
-		http.Redirect(w, &http.Request{}, token.Redirect, http.StatusFound)
+		// Set Location directly rather than via http.Redirect, which would
+		// require a *http.Request to resolve relative targets (and panic on a
+		// nil URL). The configured value is used verbatim.
+		h.Set("Location", token.Redirect)
+		w.WriteHeader(http.StatusFound)
 		return
 	}
 
