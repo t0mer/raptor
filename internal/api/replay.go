@@ -46,22 +46,30 @@ func (a *API) replayRequests(w http.ResponseWriter, r *http.Request) {
 		limit = 1000
 	}
 
-	reqs, err := a.store.ListRequestsWhere(r.Context(), tok.UUID, filter.SQL, filter.Args, 100, 0)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load requests")
-		return
-	}
-
+	const pageSize = 100
 	replayed, failed := 0, 0
-	for i, req := range reqs {
-		if i >= limit {
+	for offset := 0; replayed+failed < limit; offset += pageSize {
+		reqs, err := a.store.ListRequestsWhere(r.Context(), tok.UUID, filter.SQL, filter.Args, pageSize, offset)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load requests")
+			return
+		}
+		if len(reqs) == 0 {
 			break
 		}
-		if err := replayOne(r.Context(), client, body.TargetURL, req); err != nil {
-			failed++
-			continue
+		for _, req := range reqs {
+			if replayed+failed >= limit {
+				break
+			}
+			if err := replayOne(r.Context(), client, body.TargetURL, req); err != nil {
+				failed++
+				continue
+			}
+			replayed++
 		}
-		replayed++
+		if len(reqs) < pageSize {
+			break
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"replayed": replayed, "failed": failed})
 }
