@@ -55,7 +55,8 @@ npm-debug.log*
 *.swp
 .DS_Store
 
-# Embedded UI — keep the placeholder so the embed compiles pre-build
+# Embedded built UI (produced at build time) — keep only the placeholder
+/internal/webui/dist/*
 !/internal/webui/dist/.gitkeep
 
 # Local security scan output

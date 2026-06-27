@@ -1,0 +1,70 @@
+@import 'tailwindcss';
+
+/* Class-based dark mode: toggled by adding `.dark` on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Semantic design tokens. Both themes define the same variable set so every
+   surface stays consistent; .dark overrides switch the whole palette. */
+:root {
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --text: #0f172a;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --accent: #4f46e5;
+  --accent-fg: #ffffff;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --err: #dc2626;
+}
+
+.dark {
+  --bg: #0a0f1d;
+  --surface: #111827;
+  --surface-2: #0d1424;
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+  --border: #1f2a3c;
+  --accent: #6366f1;
+  --accent-fg: #ffffff;
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --err: #ef4444;
+}
+
+/* Map tokens to Tailwind utilities (bg-surface, text-muted, border-border…). */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-err: var(--err);
+  --font-mono: ui-monospace, 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Thin, theme-aware scrollbars for the scrolling panes. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
