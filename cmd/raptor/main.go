@@ -20,8 +20,10 @@ import (
 	"github.com/t0mer/raptor/internal/actions"
 	"github.com/t0mer/raptor/internal/capture"
 	"github.com/t0mer/raptor/internal/config"
+	"github.com/t0mer/raptor/internal/crypto"
 	dnssrv "github.com/t0mer/raptor/internal/dns"
 	"github.com/t0mer/raptor/internal/email"
+	"github.com/t0mer/raptor/internal/schedules"
 	"github.com/t0mer/raptor/internal/server"
 	"github.com/t0mer/raptor/internal/sse"
 	"github.com/t0mer/raptor/internal/store"
@@ -66,6 +68,18 @@ func run(cfg config.Config, logger *slog.Logger) error {
 	}
 	defer st.Close()
 
+	// Secrets-at-rest: load (or create) the AES-256-GCM key and enable
+	// transparent encryption of secret columns (notify URLs, etc.).
+	key, err := crypto.LoadOrCreateKey(filepath.Join(cfg.Data, "secret.key"))
+	if err != nil {
+		return fmt.Errorf("load encryption key: %w", err)
+	}
+	cipher, err := crypto.New(key)
+	if err != nil {
+		return fmt.Errorf("init cipher: %w", err)
+	}
+	st.SetCipher(cipher)
+
 	hub := sse.NewHub()
 	engine := actions.New(actions.WithSSRFLists(cfg.ActionAllow, cfg.ActionDeny, cfg.ActionAllowInternal))
 	actionsSvc := actions.NewService(engine, st)
@@ -86,6 +100,7 @@ func run(cfg config.Config, logger *slog.Logger) error {
 
 	emailSrv := email.New(capturer, cfg.EmailDomain, email.WithLogger(logger))
 	dnsSrv := dnssrv.New(capturer, cfg.DNSDomain, dnssrv.WithLogger(logger))
+	scheduleRunner := schedules.New(st, actionsSvc, schedules.WithLogger(logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -110,6 +125,7 @@ func run(cfg config.Config, logger *slog.Logger) error {
 			logger.Error("dns server stopped", "error", err)
 		}
 	}()
+	go scheduleRunner.Start(ctx)
 
 	select {
 	case err := <-errc:
