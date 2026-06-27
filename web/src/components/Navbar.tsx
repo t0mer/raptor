@@ -6,9 +6,10 @@ interface Props {
   onToggleTheme: () => void
   onNewToken: () => void
   onToggleSidebar: () => void
+  onHome: () => void
 }
 
-export function Navbar({ theme, onToggleTheme, onNewToken, onToggleSidebar }: Props) {
+export function Navbar({ theme, onToggleTheme, onNewToken, onToggleSidebar, onHome }: Props) {
   return (
     <header className="flex items-center gap-3 border-b border-border bg-surface px-4 h-14 shrink-0">
       <button
@@ -19,13 +20,17 @@ export function Navbar({ theme, onToggleTheme, onNewToken, onToggleSidebar }: Pr
         <MenuIcon />
       </button>
 
-      <div className="flex items-center gap-2 font-semibold tracking-tight">
+      <button
+        onClick={onHome}
+        className="flex items-center gap-2 font-semibold tracking-tight"
+        aria-label="Go to inbox"
+      >
         <span className="grid place-items-center w-8 h-8 rounded-lg bg-accent text-accent-fg">
           <BoltIcon width={18} height={18} />
         </span>
         <span className="text-lg">Raptor</span>
         <span className="hidden sm:inline text-xs text-muted font-normal">webhook inspector</span>
-      </div>
+      </button>
 
       <div className="ml-auto flex items-center gap-2">
         <button

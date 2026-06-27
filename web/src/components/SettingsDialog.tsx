@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import type { Token, TokenInput } from '../api'
+import type { Group, Token, TokenInput } from '../api'
 
 interface Props {
   token: Token
+  groups: Group[]
   onClose: () => void
   onSave: (body: TokenInput) => Promise<void>
   onDelete: () => Promise<void>
@@ -11,7 +12,7 @@ interface Props {
 const field = 'w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40'
 const label = 'text-xs uppercase tracking-wide text-muted'
 
-export function SettingsDialog({ token, onClose, onSave, onDelete }: Props) {
+export function SettingsDialog({ token, groups, onClose, onSave, onDelete }: Props) {
   const [form, setForm] = useState<TokenInput>({
     alias: token.alias ?? '',
     description: token.description,
@@ -23,6 +24,7 @@ export function SettingsDialog({ token, onClose, onSave, onDelete }: Props) {
     request_limit: token.request_limit,
     redirect: token.redirect,
     cors: token.cors,
+    group_id: token.group_id ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -79,13 +81,30 @@ export function SettingsDialog({ token, onClose, onSave, onDelete }: Props) {
             </div>
           </div>
 
-          <div>
-            <label className={label}>Description</label>
-            <input
-              className={field}
-              value={form.description ?? ''}
-              onChange={(e) => set('description', e.target.value)}
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={label}>Description</label>
+              <input
+                className={field}
+                value={form.description ?? ''}
+                onChange={(e) => set('description', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className={label}>Group</label>
+              <select
+                className={field}
+                value={form.group_id ?? ''}
+                onChange={(e) => set('group_id', e.target.value)}
+              >
+                <option value="">Ungrouped</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div>

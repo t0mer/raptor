@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { api, type CapturedRequest, type Token, type TokenInput } from './api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { api, type CapturedRequest, type Group, type Token, type TokenInput } from './api'
 import { copyText } from './lib'
 import { useTheme } from './useTheme'
 import { Navbar } from './components/Navbar'
@@ -7,26 +7,37 @@ import { TokenList } from './components/TokenList'
 import { RequestList } from './components/RequestList'
 import { RequestDetail } from './components/RequestDetail'
 import { SettingsDialog } from './components/SettingsDialog'
+import { SearchBar } from './components/SearchBar'
+import { ControlPanel } from './components/ControlPanel'
 import { CopyIcon, SettingsIcon, TrashIcon } from './components/icons'
 
 const ACTIVE_KEY = 'raptor-active'
+const GROUP_COLORS = ['#4f46e5', '#16a34a', '#d97706', '#dc2626', '#0891b2', '#7c3aed', '#db2777']
 
-function initialActive(): string | null {
+type View = 'inbox' | 'panel'
+
+function initialState(): { view: View; active: string | null } {
   const hash = window.location.hash.replace(/^#\/?/, '')
-  if (hash) return hash
-  return localStorage.getItem(ACTIVE_KEY)
+  if (hash === 'panel') return { view: 'panel', active: localStorage.getItem(ACTIVE_KEY) }
+  if (hash) return { view: 'inbox', active: hash }
+  return { view: 'inbox', active: localStorage.getItem(ACTIVE_KEY) }
 }
 
 export default function App() {
   const { theme, toggle } = useTheme()
+  const init = initialState()
   const [tokens, setTokens] = useState<Token[]>([])
-  const [activeId, setActiveId] = useState<string | null>(initialActive)
+  const [groups, setGroups] = useState<Group[]>([])
+  const [activeId, setActiveId] = useState<string | null>(init.active)
+  const [view, setView] = useState<View>(init.view)
   const [requests, setRequests] = useState<CapturedRequest[]>([])
   const [selected, setSelected] = useState<CapturedRequest | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const queryRef = useRef('')
 
   const activeToken = tokens.find((t) => t.uuid === activeId) ?? null
 
@@ -40,48 +51,69 @@ export default function App() {
     }
   }, [])
 
+  const loadGroups = useCallback(async () => {
+    try {
+      setGroups(await api.listGroups())
+    } catch {
+      /* groups are optional */
+    }
+  }, [])
+
   useEffect(() => {
     void loadTokens()
-  }, [loadTokens])
+    void loadGroups()
+  }, [loadTokens, loadGroups])
 
-  const loadRequests = useCallback(async (id: string) => {
+  const loadRequests = useCallback(async (id: string, q: string) => {
     try {
-      const page = await api.listRequests(id, 1, 100)
+      const page = await api.listRequests(id, 1, 100, q)
       setRequests(page.data ?? [])
     } catch {
       /* transient */
     }
   }, [])
 
+  // Reload when the search query changes for the active token.
+  useEffect(() => {
+    queryRef.current = query
+    if (activeId) void loadRequests(activeId, query)
+  }, [query, activeId, loadRequests])
+
   // Live stream + polling fallback for the active token.
   useEffect(() => {
     if (!activeId) return
     localStorage.setItem(ACTIVE_KEY, activeId)
-    window.location.hash = `/${activeId}`
+    if (view === 'inbox') window.location.hash = `/${activeId}`
     setSelected(null)
-    void loadRequests(activeId)
+    void loadRequests(activeId, queryRef.current)
 
     const es = new EventSource(api.streamURL(activeId))
     es.addEventListener('request', (e) => {
       const r = JSON.parse((e as MessageEvent).data) as CapturedRequest
-      setRequests((prev) => (prev.some((x) => x.uuid === r.uuid) ? prev : [r, ...prev]))
+      // With an active filter, refetch so results stay consistent with the query.
+      if (queryRef.current) {
+        void loadRequests(activeId, queryRef.current)
+      } else {
+        setRequests((prev) => (prev.some((x) => x.uuid === r.uuid) ? prev : [r, ...prev]))
+      }
       setTokens((prev) =>
         prev.map((t) => (t.uuid === activeId ? { ...t, latest_request_at: r.created_at } : t)),
       )
     })
 
-    const poll = setInterval(() => void loadRequests(activeId), 60_000)
+    const poll = setInterval(() => void loadRequests(activeId, queryRef.current), 60_000)
     return () => {
       es.close()
       clearInterval(poll)
     }
-  }, [activeId, loadRequests])
+  }, [activeId, view, loadRequests])
 
   async function handleCreate() {
     try {
       const tok = await api.createToken({})
       setTokens((prev) => [tok, ...prev])
       setActiveId(tok.uuid)
+      setView('inbox')
       setSidebarOpen(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'create failed')
@@ -90,6 +122,18 @@ export default function App() {
 
   function handleSelectToken(id: string) {
     setActiveId(id)
+    setView('inbox')
+    setSidebarOpen(false)
+  }
+
+  function goHome() {
+    setView('inbox')
+    if (activeId) window.location.hash = `/${activeId}`
+  }
+
+  function openPanel() {
+    setView('panel')
+    window.location.hash = '/panel'
     setSidebarOpen(false)
   }
 
@@ -99,13 +143,31 @@ export default function App() {
     setTokens((prev) => prev.map((t) => (t.uuid === updated.uuid ? updated : t)))
   }
 
-  async function handleDeleteToken() {
-    if (!activeToken) return
-    await api.deleteToken(activeToken.uuid)
-    setTokens((prev) => prev.filter((t) => t.uuid !== activeToken.uuid))
-    setShowSettings(false)
-    setActiveId(null)
-    setRequests([])
+  async function handleDeleteToken(id: string) {
+    await api.deleteToken(id)
+    setTokens((prev) => prev.filter((t) => t.uuid !== id))
+    if (id === activeId) {
+      setShowSettings(false)
+      setActiveId(null)
+      setRequests([])
+    }
+  }
+
+  async function handleAssignGroup(tokenId: string, groupId: string) {
+    const updated = await api.updateToken(tokenId, { group_id: groupId })
+    setTokens((prev) => prev.map((t) => (t.uuid === tokenId ? updated : t)))
+  }
+
+  async function handleCreateGroup(name: string) {
+    const color = GROUP_COLORS[groups.length % GROUP_COLORS.length]
+    const g = await api.createGroup(name, color)
+    setGroups((prev) => [g, ...prev])
+  }
+
+  async function handleDeleteGroup(id: string) {
+    await api.deleteGroup(id)
+    setGroups((prev) => prev.filter((g) => g.id !== id))
+    setTokens((prev) => prev.map((t) => (t.group_id === id ? { ...t, group_id: '' } : t)))
   }
 
   async function handleDeleteRequest(rid: string) {
@@ -117,8 +179,8 @@ export default function App() {
 
   async function handleClear() {
     if (!activeToken) return
-    await api.clearRequests(activeToken.uuid)
-    setRequests([])
+    await api.clearRequests(activeToken.uuid, queryRef.current)
+    void loadRequests(activeToken.uuid, queryRef.current)
     setSelected(null)
   }
 
@@ -136,6 +198,7 @@ export default function App() {
         onToggleTheme={toggle}
         onNewToken={handleCreate}
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
+        onHome={goHome}
       />
 
       {error && (
@@ -143,23 +206,41 @@ export default function App() {
       )}
 
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Sidebar: persistent on desktop, drawer on mobile */}
-        <aside
-          className={`absolute md:static z-30 h-full w-72 shrink-0 bg-surface border-r border-border flex flex-col transition-transform md:translate-x-0 ${
-            sidebarOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'
-          }`}
-        >
-          <TokenList tokens={tokens} activeId={activeId} onSelect={handleSelectToken} />
-        </aside>
-        {sidebarOpen && (
-          <div
-            className="absolute inset-0 z-20 bg-black/40 md:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
+        {view === 'inbox' && (
+          <>
+            <aside
+              className={`absolute md:static z-30 h-full w-72 shrink-0 bg-surface border-r border-border flex flex-col transition-transform md:translate-x-0 ${
+                sidebarOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'
+              }`}
+            >
+              <TokenList
+                tokens={tokens}
+                groups={groups}
+                activeId={activeId}
+                onSelect={handleSelectToken}
+                onOpenPanel={openPanel}
+              />
+            </aside>
+            {sidebarOpen && (
+              <div
+                className="absolute inset-0 z-20 bg-black/40 md:hidden"
+                onClick={() => setSidebarOpen(false)}
+              />
+            )}
+          </>
         )}
 
-        {/* Main content */}
-        {activeToken ? (
+        {view === 'panel' ? (
+          <ControlPanel
+            tokens={tokens}
+            groups={groups}
+            onOpenToken={handleSelectToken}
+            onDeleteToken={handleDeleteToken}
+            onAssignGroup={handleAssignGroup}
+            onCreateGroup={handleCreateGroup}
+            onDeleteGroup={handleDeleteGroup}
+          />
+        ) : activeToken ? (
           <main className="flex-1 flex flex-col min-w-0">
             <TokenBar
               token={activeToken}
@@ -169,19 +250,20 @@ export default function App() {
               onClear={handleClear}
             />
             <div className="flex-1 flex min-h-0">
-              {/* request list */}
               <div
-                className={`w-full md:w-80 lg:w-96 shrink-0 border-r border-border min-h-0 ${
-                  selected ? 'hidden md:block' : 'block'
+                className={`w-full md:w-80 lg:w-96 shrink-0 border-r border-border min-h-0 flex flex-col ${
+                  selected ? 'hidden md:flex' : 'flex'
                 }`}
               >
-                <RequestList
-                  requests={requests}
-                  activeId={selected?.uuid ?? null}
-                  onSelect={setSelected}
-                />
+                <SearchBar onSearch={setQuery} />
+                <div className="flex-1 min-h-0">
+                  <RequestList
+                    requests={requests}
+                    activeId={selected?.uuid ?? null}
+                    onSelect={setSelected}
+                  />
+                </div>
               </div>
-              {/* detail */}
               <div className={`flex-1 min-w-0 ${selected ? 'block' : 'hidden md:block'}`}>
                 {selected ? (
                   <div className="h-full flex flex-col">
@@ -229,9 +311,10 @@ export default function App() {
       {showSettings && activeToken && (
         <SettingsDialog
           token={activeToken}
+          groups={groups}
           onClose={() => setShowSettings(false)}
           onSave={handleSaveSettings}
-          onDelete={handleDeleteToken}
+          onDelete={() => handleDeleteToken(activeToken.uuid)}
         />
       )}
     </div>
@@ -272,7 +355,7 @@ function TokenBar({
         <button
           onClick={onClear}
           className="p-1.5 rounded-lg hover:bg-surface-2 text-muted"
-          aria-label="Clear all requests"
+          aria-label="Clear matching requests"
         >
           <TrashIcon width={16} height={16} />
         </button>

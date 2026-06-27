@@ -57,6 +57,13 @@ export interface RequestPage {
   per_page: number
 }
 
+export interface Group {
+  id: string
+  name: string
+  color?: string
+  created_at: string
+}
+
 export type TokenInput = Partial<{
   alias: string
   default_status: number
@@ -68,6 +75,7 @@ export type TokenInput = Partial<{
   request_limit: number
   description: string
   redirect: string
+  group_id: string
 }>
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -97,12 +105,24 @@ export const api = {
     req<Token>(`/tokens/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteToken: (id: string) => req<void>(`/tokens/${id}`, { method: 'DELETE' }),
 
-  listRequests: (id: string, page = 1, perPage = 50) =>
-    req<RequestPage>(`/tokens/${id}/requests?page=${page}&per_page=${perPage}`),
+  listRequests: (id: string, page = 1, perPage = 50, q = '') => {
+    const params = new URLSearchParams({ page: String(page), per_page: String(perPage) })
+    if (q) params.set('q', q)
+    return req<RequestPage>(`/tokens/${id}/requests?${params}`)
+  },
   deleteRequest: (id: string, rid: string) =>
     req<void>(`/tokens/${id}/requests/${rid}`, { method: 'DELETE' }),
-  clearRequests: (id: string) =>
-    req<{ deleted: number }>(`/tokens/${id}/requests`, { method: 'DELETE' }),
+  clearRequests: (id: string, q = '') => {
+    const qs = q ? `?q=${encodeURIComponent(q)}` : ''
+    return req<{ deleted: number }>(`/tokens/${id}/requests${qs}`, { method: 'DELETE' })
+  },
+
+  listGroups: () => req<{ data: Group[] }>('/groups').then((r) => r.data ?? []),
+  createGroup: (name: string, color = '') =>
+    req<Group>('/groups', { method: 'POST', body: JSON.stringify({ name, color }) }),
+  updateGroup: (id: string, body: Partial<{ name: string; color: string }>) =>
+    req<Group>(`/groups/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteGroup: (id: string) => req<void>(`/groups/${id}`, { method: 'DELETE' }),
 
   rawURL: (id: string, rid: string) => `/api/v1/tokens/${id}/requests/${rid}/raw`,
   csvURL: (id: string) => `/api/v1/tokens/${id}/requests.csv`,
