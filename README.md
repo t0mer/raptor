@@ -5,10 +5,10 @@
 inspect and (in later phases) transform, automate and forward inbound HTTP
 requests — all from a single static binary with an embedded UI.
 
-> Raptor is built in reviewable phases. **Phases 1–2 (current)** deliver the core
-> capture engine, inspection API, a real-time web inbox, request search, groups
-> and a control panel. Email/DNS capture, custom actions, schedules and accounts
-> land in later phases (see [Roadmap](#roadmap)).
+> Raptor is built in reviewable phases. **Phases 1–3 (current)** deliver the core
+> HTTP capture engine, inspection API, a real-time web inbox, request search,
+> groups, a control panel, and **inbound email + DNS capture**. Custom actions,
+> schedules and accounts land in later phases (see [Roadmap](#roadmap)).
 
 ## Screenshots
 
@@ -23,6 +23,12 @@ requests — all from a single static binary with an embedded UI.
 | Search DSL | Control Panel |
 | --- | --- |
 | ![Filtering requests with the search DSL](assets/screenshots/search-dark.png) | ![Control Panel managing URLs and groups](assets/screenshots/control-panel-dark.png) |
+
+### Email & DNS capture
+
+| Email (rendered + auth checks) | DNS query |
+| --- | --- |
+| ![Captured email with sandboxed HTML body and DKIM/SPF/DMARC results](assets/screenshots/email-detail-dark.png) | ![Captured DNS query detail](assets/screenshots/dns-detail-light.png) |
 
 ### Mobile (responsive)
 
@@ -62,6 +68,30 @@ requests — all from a single static binary with an embedded UI.
   and a group can be deleted without losing its URLs.
 - **Control Panel** — manage every URL and group from one table: reassign groups,
   open or delete URLs, and create/delete groups.
+
+### Phase 3 — Email & DNS capture
+
+- **Inbound email** — an SMTP server captures mail sent to
+  `{token}@{email-domain}`. Messages are MIME-parsed (subject, sender, HTML and
+  plain bodies, **attachments**), and **DKIM/SPF/DMARC** are evaluated and shown
+  as badges. HTML bodies render in a fully sandboxed iframe (no script execution).
+- **Inbound DNS** — a DNS server (UDP+TCP) captures queries for
+  `{token}.{dns-domain}` and any subdomain, recording the query name, type and
+  client IP, and returns a minimal answer.
+- Email and DNS captures share the inbox, search, SSE stream and CSV export with
+  HTTP requests — filter them with `type:email` / `type:dns`.
+
+#### Exposing email & DNS
+
+The SMTP (`2525`) and DNS (`5354`) listeners default to unprivileged ports. To
+accept real mail/queries on the standard ports, put a reverse proxy or port
+forward in front (`25 → 2525`, `53 → 5354`), and point DNS at your host:
+
+- **Email:** add an MX record for `emailhook.site` → your host.
+- **DNS:** delegate `dnshook.site` with an NS record pointing at your host, so
+  all `*.dnshook.site` queries reach Raptor.
+
+Override the suffixes with `--email-domain` / `--dns-domain` to use your own.
 
 ## Quick start
 
@@ -161,7 +191,7 @@ is embedded into the Go binary via `embed.FS`, so production ships a single file
 | --- | --- |
 | **1 — Core capture** *(done)* | URLs, HTTP capture, inspection API, real-time SPA inbox, default responses, CSV, metrics |
 | **2 — Response control** *(done)* | Request search DSL, subset delete, groups, control panel |
-| 3 — Email + DNS | Inbound SMTP (`@emailhook`) and DNS (`.dnshook`) capture |
+| **3 — Email + DNS** *(done)* | Inbound SMTP (`@emailhook`) capture with DKIM/SPF/DMARC, inbound DNS (`.dnshook`) capture |
 | 4 — Custom Actions | Action chain engine, variables, conditions, scripting |
 | 5 — Schedules & replay | Cron schedules, alerting, request replay, CLI forwarding |
 | 6 — Accounts & org | API keys, multi-user, SAML SSO, custom domains |

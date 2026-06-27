@@ -348,6 +348,16 @@ components:
           type: array
           items: { $ref: "#/components/schemas/File" }
         created_at: { type: string, format: date-time }
+        # Email-specific fields (type == email)
+        sender: { type: string }
+        message_id: { type: string }
+        destinations: { type: string }
+        subject: { type: string }
+        text_content: { type: string }
+        checks:
+          type: object
+          description: "DKIM/SPF/DMARC results, e.g. {\"dkim\":\"pass\",\"spf\":\"fail\"}"
+          additionalProperties: { type: string }
     File:
       type: object
       properties:
