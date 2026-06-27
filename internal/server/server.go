@@ -13,6 +13,7 @@ import (
 	"github.com/t0mer/raptor/internal/api"
 	"github.com/t0mer/raptor/internal/capture"
 	"github.com/t0mer/raptor/internal/config"
+	"github.com/t0mer/raptor/internal/metrics"
 	"github.com/t0mer/raptor/internal/sse"
 	"github.com/t0mer/raptor/internal/store"
 	"github.com/t0mer/raptor/internal/version"
@@ -47,6 +48,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Use(middleware.Timeout(60 * time.Second))
 
 	r.Get("/health", s.health)
+	r.Handle("/metrics", metrics.Handler())
 
 	// Management API (versioned).
 	r.Mount("/api/v1", api.New(s.store, s.cfg.BaseURL, s.hub).Routes())

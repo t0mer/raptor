@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/t0mer/raptor/internal/metrics"
 	"github.com/t0mer/raptor/internal/models"
 	"github.com/t0mer/raptor/internal/store"
 )
@@ -104,11 +105,13 @@ func (c *Capturer) Handle(w http.ResponseWriter, r *http.Request, token *models.
 	now := time.Now().UTC()
 
 	if IsExpired(token, now) {
+		metrics.RequestsRejected.WithLabelValues("expired").Inc()
 		http.Error(w, "this URL has expired", http.StatusGone)
 		return
 	}
 
 	if !c.limiter.allow(token.UUID, token.Timeout) {
+		metrics.RequestsRejected.WithLabelValues("rate_limited").Inc()
 		w.Header().Set("Retry-After", "60")
 		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 		return
@@ -124,6 +127,7 @@ func (c *Capturer) Handle(w http.ResponseWriter, r *http.Request, token *models.
 		http.Error(w, "failed to store request", http.StatusInternalServerError)
 		return
 	}
+	metrics.RequestsCaptured.WithLabelValues(req.Type).Inc()
 	c.pub.Publish(token.UUID, req)
 
 	c.writeResponse(w, token, statusOverride)

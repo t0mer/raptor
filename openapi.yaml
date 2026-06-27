@@ -126,6 +126,18 @@ paths:
                 type: object
                 properties:
                   deleted: { type: integer }
+  /tokens/{tokenID}/requests.csv:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+    get:
+      summary: Export all captured requests as CSV
+      operationId: exportCSV
+      responses:
+        "200":
+          description: CSV download
+          content:
+            text/csv:
+              schema: { type: string }
   /tokens/{tokenID}/requests/latest:
     parameters:
       - $ref: "#/components/parameters/TokenID"

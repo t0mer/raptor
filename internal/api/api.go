@@ -36,6 +36,8 @@ func (a *API) Routes() chi.Router {
 
 			r.Get("/stream", a.streamRequests)
 
+			r.Get("/requests.csv", a.exportCSV)
+
 			r.Route("/requests", func(r chi.Router) {
 				r.Get("/", a.listRequests)
 				r.Delete("/", a.deleteAllRequests)
