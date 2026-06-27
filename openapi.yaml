@@ -73,6 +73,120 @@ paths:
       responses:
         "204": { description: Deleted }
         "404": { description: Not found }
+  /action-types:
+    get:
+      summary: List available Custom Action type names
+      operationId: listActionTypes
+      responses:
+        "200":
+          description: Action type names
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { type: string } }
+  /tokens/{tokenID}/actions:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+    get:
+      summary: List a token's Custom Actions (in execution order)
+      operationId: listActions
+      responses:
+        "200":
+          description: Actions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/Action" } }
+    post:
+      summary: Add a Custom Action
+      operationId: createAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActionInput" }
+      responses:
+        "201":
+          description: Created action
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Action" }
+  /tokens/{tokenID}/actions/{actionID}:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+      - { name: actionID, in: path, required: true, schema: { type: string } }
+    put:
+      summary: Update a Custom Action
+      operationId: updateAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActionInput" }
+      responses:
+        "200":
+          description: Updated action
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Action" }
+    delete:
+      summary: Delete a Custom Action
+      operationId: deleteAction
+      responses:
+        "204": { description: Deleted }
+  /tokens/{tokenID}/test-action:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+    post:
+      summary: Test a single action definition against the latest request
+      operationId: testAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActionInput" }
+      responses:
+        "200":
+          description: Test result (output, error, variables, response)
+          content:
+            application/json:
+              schema: { type: object }
+  /tokens/{tokenID}/requests/{requestID}/action-runs:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+      - $ref: "#/components/parameters/RequestID"
+    get:
+      summary: List the action run log for a request
+      operationId: listActionRuns
+      responses:
+        "200":
+          description: Action runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/ActionRun" } }
+  /tokens/{tokenID}/requests/{requestID}/execute:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+      - $ref: "#/components/parameters/RequestID"
+    post:
+      summary: Replay the action chain against a stored request
+      operationId: executeChain
+      responses:
+        "200":
+          description: Resulting action runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/ActionRun" } }
   /tokens:
     get:
       summary: List tokens
@@ -372,6 +486,38 @@ components:
         id: { type: string }
         name: { type: string }
         color: { type: string }
+        created_at: { type: string, format: date-time }
+    ActionInput:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: "set_variable | modify_response | conditions | extract_json | extract_regex | http_request | script | dont_save | stop"
+        name: { type: string }
+        position: { type: integer }
+        disabled: { type: boolean }
+        parameters: { type: object, description: "type-specific parameters" }
+    Action:
+      allOf:
+        - $ref: "#/components/schemas/ActionInput"
+        - type: object
+          properties:
+            uuid: { type: string }
+            token_id: { type: string }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+    ActionRun:
+      type: object
+      properties:
+        id: { type: string }
+        request_id: { type: string }
+        action_id: { type: string }
+        action_type: { type: string }
+        action_name: { type: string }
+        position: { type: integer }
+        output: { type: string }
+        error: { type: string }
         created_at: { type: string, format: date-time }
   securitySchemes:
     ApiKey:
