@@ -15,10 +15,38 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// secretCipher encrypts/decrypts secret values at rest. Implemented by
+// *crypto.Cipher; kept as an interface so store does not import crypto directly.
+type secretCipher interface {
+	Encrypt(string) (string, error)
+	Decrypt(string) (string, error)
+}
+
 // Store wraps a database handle and the resolved driver.
 type Store struct {
 	db     *sql.DB
 	driver string
+	cipher secretCipher
+}
+
+// SetCipher enables transparent at-rest encryption of secret columns. When
+// unset, secrets are stored as-is (used by tests that don't exercise secrets).
+func (s *Store) SetCipher(c secretCipher) { s.cipher = c }
+
+// encryptSecret encrypts a secret for storage (no-op without a cipher).
+func (s *Store) encryptSecret(v string) (string, error) {
+	if s.cipher == nil || v == "" {
+		return v, nil
+	}
+	return s.cipher.Encrypt(v)
+}
+
+// decryptSecret reverses encryptSecret (no-op without a cipher).
+func (s *Store) decryptSecret(v string) (string, error) {
+	if s.cipher == nil || v == "" {
+		return v, nil
+	}
+	return s.cipher.Decrypt(v)
 }
 
 // Open opens (and migrates) a SQLite database at the given file path. Pass
