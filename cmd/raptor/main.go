@@ -19,6 +19,8 @@ import (
 
 	"github.com/t0mer/raptor/internal/capture"
 	"github.com/t0mer/raptor/internal/config"
+	dnssrv "github.com/t0mer/raptor/internal/dns"
+	"github.com/t0mer/raptor/internal/email"
 	"github.com/t0mer/raptor/internal/server"
 	"github.com/t0mer/raptor/internal/sse"
 	"github.com/t0mer/raptor/internal/store"
@@ -67,6 +69,7 @@ func run(cfg config.Config, logger *slog.Logger) error {
 	capturer := capture.New(st, cfg.BaseURL,
 		capture.WithGlobalRequestLimit(cfg.MaxRequests),
 		capture.WithPublisher(hub),
+		capture.WithFilesDir(filepath.Join(cfg.Data, "files")),
 	)
 	srv := server.New(cfg, st, capturer, hub)
 
@@ -76,15 +79,30 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	emailSrv := email.New(capturer, cfg.EmailDomain, email.WithLogger(logger))
+	dnsSrv := dnssrv.New(capturer, cfg.DNSDomain, dnssrv.WithLogger(logger))
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// HTTP listen failure is fatal; email/DNS failures are logged but do not
+	// take down the primary HTTP capture service.
 	errc := make(chan error, 1)
 	go func() {
 		logger.Info("raptor listening",
 			"version", version.Version, "addr", httpSrv.Addr, "base_url", cfg.BaseURL)
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errc <- err
+		}
+	}()
+	go func() {
+		if err := emailSrv.ListenAndServe(":" + strconv.Itoa(cfg.SMTPPort)); err != nil {
+			logger.Error("smtp server stopped", "error", err)
+		}
+	}()
+	go func() {
+		if err := dnsSrv.ListenAndServe(":" + strconv.Itoa(cfg.DNSPort)); err != nil {
+			logger.Error("dns server stopped", "error", err)
 		}
 	}()
 
@@ -95,6 +113,8 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		logger.Info("shutting down")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		_ = emailSrv.Shutdown(shutdownCtx)
+		_ = dnsSrv.Shutdown(shutdownCtx)
 		return httpSrv.Shutdown(shutdownCtx)
 	}
 }
