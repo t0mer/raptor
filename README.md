@@ -5,11 +5,11 @@ unique URLs that capture, inspect and (in later phases) transform, automate and
 forward inbound HTTP requests, emails and DNS queries — all from a single static
 binary with an embedded UI.
 
-> Raptor is built in reviewable phases. **Phases 1–4 (current)** deliver the core
+> Raptor is built in reviewable phases. **Phases 1–5 (current)** deliver the core
 > HTTP capture engine, inspection API, a real-time web inbox, request search,
-> groups, a control panel, **inbound email + DNS capture**, and a **Custom Actions
-> engine with scripting**. Schedules and accounts land in later phases (see
-> [Roadmap](#roadmap)).
+> groups, a control panel, **inbound email + DNS capture**, a **Custom Actions
+> engine with scripting**, and **cron schedules, replay & CLI forwarding**.
+> Accounts/SSO land in the final phase (see [Roadmap](#roadmap)).
 
 ## Screenshots
 
@@ -34,6 +34,10 @@ binary with an embedded UI.
 ### Custom Actions
 
 ![Custom Actions editor — an ordered chain that runs on every request](assets/screenshots/actions-editor-dark.png)
+
+### Schedules & monitoring
+
+![Schedules — cron-driven uptime/keyword/SSL monitoring with alerting](assets/screenshots/schedules-dark.png)
 
 ### Mobile (responsive)
 
@@ -131,6 +135,30 @@ before saving.
 > `forward` mode omits `Authorization`/`Cookie` headers so caller secrets are not
 > leaked.
 
+### Phase 5 — Schedules, replay & CLI forwarding
+
+- **Schedules** — run a target URL (or a token's action chain) on a 5-field cron
+  interval, with monitoring/alerting:
+  - **status** (expected code or any non-2xx), **keyword** (body must contain a
+    string), **uptime** (host reachable), and **SSL** (cert expiring within N days).
+  - alerts are delivered via a **Shoutrrr** notify URL (Slack/Discord/Telegram/
+    ntfy/Gotify/SMTP/…); each run is recorded with history, and schedules can be
+    run on demand.
+- **Replay** — re-deliver a subset of captured requests (selected by the search
+  DSL) to a target URL, preserving method, body and headers (credentials stripped).
+- **CLI forwarding (`listen`)** — set a token's `listen` window and a capture is
+  held open until a CLI client supplies the response via the set-response
+  endpoint (`POST /requests/{id}/response`) — letting a local process handle the
+  request and return a dynamic response.
+
+**Secrets at rest.** Notify URLs (and other secrets) are encrypted with
+**AES-256-GCM**; the key is generated on first run and stored as
+`secret.key` in the data directory (mode `0600`).
+
+> The `--action-allow` / `--action-deny` / `--action-allow-internal` policy
+> applies to **all** server-side outbound requests — Custom Actions, replay, and
+> schedule monitoring — and is enforced against the resolved IP.
+
 ## Quick start
 
 ### Docker Compose
@@ -216,6 +244,12 @@ Key endpoints:
 | `POST` | `/api/v1/tokens/{id}/test-action` | Test an action against the latest request |
 | `GET` | `/api/v1/tokens/{id}/requests/{rid}/action-runs` | Per-request action run log |
 | `POST` | `/api/v1/tokens/{id}/requests/{rid}/execute` | Replay the action chain |
+| `POST` | `/api/v1/tokens/{id}/requests/{rid}/response` | Supply a response (CLI `listen` flow) |
+| `POST` | `/api/v1/tokens/{id}/replay` | Replay a request subset to a target URL |
+| `GET` `POST` | `/api/v1/schedules` | List / create schedules |
+| `PUT` `DELETE` | `/api/v1/schedules/{id}` | Update / delete a schedule |
+| `POST` | `/api/v1/schedules/{id}/run` | Run a schedule now |
+| `GET` | `/api/v1/schedules/{id}/runs` | Schedule run history |
 
 When `--require-auth` is set, send `Api-Key: <uuid>`. With no key configured the
 API is open (documented first-run bootstrap mode).
@@ -239,10 +273,10 @@ is embedded into the Go binary via `embed.FS`, so production ships a single file
 | **2 — Response control** *(done)* | Request search DSL, subset delete, groups, control panel |
 | **3 — Email + DNS** *(done)* | Inbound SMTP (`@emailhook`) capture with DKIM/SPF/DMARC, inbound DNS (`.dnshook`) capture |
 | **4 — Custom Actions** *(done)* | Action chain engine, variables, conditions, extraction, http_request, JS scripting, run log + replay |
-| 5 — Schedules & replay | Cron schedules, alerting, request replay, CLI forwarding |
+| **5 — Schedules & replay** *(done)* | Cron schedules with status/keyword/uptime/SSL alerting, request replay, CLI forwarding |
 | 6 — Accounts & org | API keys, multi-user, SAML SSO, custom domains |
 
-> Phase 4 ships the engine and a core action set. Queued/delayed/repeating
+> Phase 4 ships the action engine and a core action set; queued/delayed/repeating
 > execution and the integration catalogue (Slack, S3, SFTP, send-email, mock,
 > CSV/PDF/image, templates, …) build on the same `Action` interface and are
 > tracked for a follow-up.
