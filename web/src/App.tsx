@@ -10,16 +10,19 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { SearchBar } from './components/SearchBar'
 import { ControlPanel } from './components/ControlPanel'
 import { ActionsEditor } from './components/ActionsEditor'
+import { SchedulesView } from './components/SchedulesView'
+import { ReplayDialog } from './components/ReplayDialog'
 import { CopyIcon, SettingsIcon, TrashIcon } from './components/icons'
 
 const ACTIVE_KEY = 'raptor-active'
 const GROUP_COLORS = ['#4f46e5', '#16a34a', '#d97706', '#dc2626', '#0891b2', '#7c3aed', '#db2777']
 
-type View = 'inbox' | 'panel'
+type View = 'inbox' | 'panel' | 'schedules'
 
 function initialState(): { view: View; active: string | null } {
   const hash = window.location.hash.replace(/^#\/?/, '')
   if (hash === 'panel') return { view: 'panel', active: localStorage.getItem(ACTIVE_KEY) }
+  if (hash === 'schedules') return { view: 'schedules', active: localStorage.getItem(ACTIVE_KEY) }
   if (hash) return { view: 'inbox', active: hash }
   return { view: 'inbox', active: localStorage.getItem(ACTIVE_KEY) }
 }
@@ -35,6 +38,7 @@ export default function App() {
   const [selected, setSelected] = useState<CapturedRequest | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showActions, setShowActions] = useState(false)
+  const [showReplay, setShowReplay] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -139,6 +143,12 @@ export default function App() {
     setSidebarOpen(false)
   }
 
+  function openSchedules() {
+    setView('schedules')
+    window.location.hash = '/schedules'
+    setSidebarOpen(false)
+  }
+
   async function handleSaveSettings(body: TokenInput) {
     if (!activeToken) return
     const updated = await api.updateToken(activeToken.uuid, body)
@@ -221,6 +231,7 @@ export default function App() {
                 activeId={activeId}
                 onSelect={handleSelectToken}
                 onOpenPanel={openPanel}
+                onOpenSchedules={openSchedules}
               />
             </aside>
             {sidebarOpen && (
@@ -242,6 +253,8 @@ export default function App() {
             onCreateGroup={handleCreateGroup}
             onDeleteGroup={handleDeleteGroup}
           />
+        ) : view === 'schedules' ? (
+          <SchedulesView />
         ) : activeToken ? (
           <main className="flex-1 flex flex-col min-w-0">
             <TokenBar
@@ -250,6 +263,7 @@ export default function App() {
               onCopy={copyURL}
               onSettings={() => setShowSettings(true)}
               onActions={() => setShowActions(true)}
+              onReplay={() => setShowReplay(true)}
               onClear={handleClear}
             />
             <div className="flex-1 flex min-h-0">
@@ -324,6 +338,10 @@ export default function App() {
       {showActions && activeToken && (
         <ActionsEditor tokenId={activeToken.uuid} onClose={() => setShowActions(false)} />
       )}
+
+      {showReplay && activeToken && (
+        <ReplayDialog tokenId={activeToken.uuid} query={query} onClose={() => setShowReplay(false)} />
+      )}
     </div>
   )
 }
@@ -334,6 +352,7 @@ function TokenBar({
   onCopy,
   onSettings,
   onActions,
+  onReplay,
   onClear,
 }: {
   token: Token
@@ -341,6 +360,7 @@ function TokenBar({
   onCopy: () => void
   onSettings: () => void
   onActions: () => void
+  onReplay: () => void
   onClear: () => void
 }) {
   return (
@@ -362,6 +382,12 @@ function TokenBar({
           }`}
         >
           Actions
+        </button>
+        <button
+          onClick={onReplay}
+          className="text-xs px-2 py-1 rounded-lg hover:bg-surface-2 text-muted"
+        >
+          Replay
         </button>
         <a
           href={api.csvURL(token.uuid)}

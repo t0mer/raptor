@@ -25,6 +25,7 @@ export function SettingsDialog({ token, groups, onClose, onSave, onDelete }: Pro
     redirect: token.redirect,
     cors: token.cors,
     group_id: token.group_id ?? '',
+    listen: token.listen,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -163,6 +164,20 @@ export function SettingsDialog({ token, groups, onClose, onSave, onDelete }: Pro
               onChange={(e) => set('redirect', e.target.value)}
               placeholder="leave empty to return the body"
             />
+          </div>
+
+          <div>
+            <label className={label}>Listen / CLI forwarding (seconds)</label>
+            <input
+              className={field}
+              type="number"
+              value={form.listen ?? 0}
+              onChange={(e) => set('listen', Number(e.target.value))}
+              placeholder="0 = off"
+            />
+            <p className="text-xs text-muted mt-1">
+              Hold requests open this long for a CLI client to set the response (0 disables).
+            </p>
           </div>
 
           <label className="flex items-center gap-2 text-sm">

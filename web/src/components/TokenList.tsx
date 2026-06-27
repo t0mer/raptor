@@ -7,9 +7,10 @@ interface Props {
   activeId: string | null
   onSelect: (id: string) => void
   onOpenPanel: () => void
+  onOpenSchedules: () => void
 }
 
-export function TokenList({ tokens, groups, activeId, onSelect, onOpenPanel }: Props) {
+export function TokenList({ tokens, groups, activeId, onSelect, onOpenPanel, onOpenSchedules }: Props) {
   const groupName = new Map(groups.map((g) => [g.id, g]))
 
   // Bucket tokens by group, preserving a stable "Ungrouped" bucket last.
@@ -64,12 +65,20 @@ export function TokenList({ tokens, groups, activeId, onSelect, onOpenPanel }: P
         })}
       </nav>
 
-      <button
-        onClick={onOpenPanel}
-        className="text-sm text-muted hover:text-text border-t border-border px-4 py-2.5 text-left"
-      >
-        Control Panel →
-      </button>
+      <div className="border-t border-border flex flex-col">
+        <button
+          onClick={onOpenPanel}
+          className="text-sm text-muted hover:text-text px-4 py-2.5 text-left"
+        >
+          Control Panel →
+        </button>
+        <button
+          onClick={onOpenSchedules}
+          className="text-sm text-muted hover:text-text px-4 py-2.5 text-left border-t border-border"
+        >
+          Schedules →
+        </button>
+      </div>
     </div>
   )
 }

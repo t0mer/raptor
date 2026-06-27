@@ -100,6 +100,53 @@ export interface ActionInput {
   parameters?: Record<string, unknown>
 }
 
+export interface Schedule {
+  uuid: string
+  token_id?: string
+  name: string
+  cron: string
+  target_url: string
+  method: string
+  body: string
+  run_actions: boolean
+  expect_status: number
+  keyword: string
+  check_ssl: boolean
+  ssl_days: number
+  has_notify: boolean
+  enabled: boolean
+  last_run?: string | null
+  next_run?: string | null
+  last_status: string
+  last_message: string
+}
+
+export type ScheduleInput = Partial<{
+  token_id: string
+  name: string
+  cron: string
+  target_url: string
+  method: string
+  body: string
+  run_actions: boolean
+  expect_status: number
+  keyword: string
+  check_ssl: boolean
+  ssl_days: number
+  notify_url: string
+  enabled: boolean
+}>
+
+export interface ScheduleRun {
+  id: string
+  schedule_id: string
+  status: string
+  status_code: number
+  message: string
+  duration_ms: number
+  created_at: string
+}
+
 export interface TestActionResult {
   output: string
   error: string
@@ -121,6 +168,7 @@ export type TokenInput = Partial<{
   description: string
   redirect: string
   group_id: string
+  listen: number
 }>
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -179,6 +227,22 @@ export const api = {
     req<{ data: ActionRun[] }>(`/tokens/${id}/requests/${rid}/execute`, { method: 'POST' }).then(
       (r) => r.data ?? [],
     ),
+
+  listSchedules: () => req<{ data: Schedule[] }>('/schedules').then((r) => r.data ?? []),
+  createSchedule: (body: ScheduleInput) =>
+    req<Schedule>('/schedules', { method: 'POST', body: JSON.stringify(body) }),
+  updateSchedule: (id: string, body: ScheduleInput) =>
+    req<Schedule>(`/schedules/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteSchedule: (id: string) => req<void>(`/schedules/${id}`, { method: 'DELETE' }),
+  runSchedule: (id: string) => req<ScheduleRun>(`/schedules/${id}/run`, { method: 'POST' }),
+  listScheduleRuns: (id: string) =>
+    req<{ data: ScheduleRun[] }>(`/schedules/${id}/runs`).then((r) => r.data ?? []),
+
+  replay: (id: string, targetURL: string, q = '') =>
+    req<{ replayed: number; failed: number }>(`/tokens/${id}/replay`, {
+      method: 'POST',
+      body: JSON.stringify({ target_url: targetURL, q }),
+    }),
 
   listGroups: () => req<{ data: Group[] }>('/groups').then((r) => r.data ?? []),
   createGroup: (name: string, color = '') =>
