@@ -12,6 +12,67 @@ info:
 servers:
   - url: /api/v1
 paths:
+  /groups:
+    get:
+      summary: List groups
+      operationId: listGroups
+      responses:
+        "200":
+          description: All groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Group" }
+    post:
+      summary: Create a group
+      operationId: createGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                color: { type: string }
+      responses:
+        "201":
+          description: Created group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+  /groups/{groupID}:
+    parameters:
+      - { name: groupID, in: path, required: true, schema: { type: string } }
+    put:
+      summary: Update a group
+      operationId: updateGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                color: { type: string }
+      responses:
+        "200":
+          description: Updated group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+    delete:
+      summary: Delete a group (tokens are kept and detached)
+      operationId: deleteGroup
+      responses:
+        "204": { description: Deleted }
+        "404": { description: Not found }
   /tokens:
     get:
       summary: List tokens
@@ -295,6 +356,13 @@ components:
         filename: { type: string }
         content_type: { type: string }
         size: { type: integer }
+    Group:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        color: { type: string }
+        created_at: { type: string, format: date-time }
   securitySchemes:
     ApiKey:
       type: apiKey

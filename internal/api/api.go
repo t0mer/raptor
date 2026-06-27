@@ -25,6 +25,13 @@ func New(st *store.Store, baseURL string, hub *sse.Hub) *API {
 func (a *API) Routes() chi.Router {
 	r := chi.NewRouter()
 
+	r.Route("/groups", func(r chi.Router) {
+		r.Get("/", a.listGroups)
+		r.Post("/", a.createGroup)
+		r.Put("/{groupID}", a.updateGroup)
+		r.Delete("/{groupID}", a.deleteGroup)
+	})
+
 	r.Route("/tokens", func(r chi.Router) {
 		r.Get("/", a.listTokens)
 		r.Post("/", a.createToken)
