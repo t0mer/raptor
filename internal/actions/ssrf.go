@@ -56,7 +56,10 @@ func (g *ssrfGuard) client(timeout time.Duration) *http.Client {
 		},
 	}
 	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
+		// No environment proxy: a proxy would make the dial-time IP check
+		// validate the proxy rather than the real target, weakening SSRF
+		// protection.
+		Proxy:                 nil,
 		DialContext:           dialer.DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
@@ -96,15 +99,21 @@ func (g *ssrfGuard) checkIP(ip net.IP) error {
 	return nil
 }
 
+// cgnat is the RFC 6598 shared address space (100.64.0.0/10), used by some cloud
+// metadata endpoints (e.g. Alibaba 100.100.100.200) and carrier-grade NAT.
+var _, cgnat, _ = net.ParseCIDR("100.64.0.0/10")
+
 // isInternalIP reports whether an IP is loopback, link-local (incl. the cloud
-// metadata 169.254.169.254), private (RFC1918 / ULA), unspecified or multicast.
+// metadata 169.254.169.254), private (RFC1918 / ULA), CGNAT, unspecified or
+// multicast.
 func isInternalIP(ip net.IP) bool {
 	return ip.IsLoopback() ||
 		ip.IsLinkLocalUnicast() ||
 		ip.IsLinkLocalMulticast() ||
 		ip.IsPrivate() ||
 		ip.IsUnspecified() ||
-		ip.IsMulticast()
+		ip.IsMulticast() ||
+		cgnat.Contains(ip)
 }
 
 func ipMatchesPattern(ip net.IP, pattern string) bool {
