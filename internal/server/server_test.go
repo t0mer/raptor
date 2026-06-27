@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/t0mer/raptor/internal/actions"
 	"github.com/t0mer/raptor/internal/capture"
 	"github.com/t0mer/raptor/internal/config"
 	"github.com/t0mer/raptor/internal/sse"
@@ -27,7 +28,8 @@ func newTestServer(t *testing.T) *httptest.Server {
 	cfg.BaseURL = "http://example.test"
 	hub := sse.NewHub()
 	capturer := capture.New(st, cfg.BaseURL, capture.WithPublisher(hub))
-	srv := New(cfg, st, capturer, hub)
+	svc := actions.NewService(actions.New(), st)
+	srv := New(cfg, st, capturer, hub, svc)
 
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)

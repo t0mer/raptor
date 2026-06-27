@@ -17,6 +17,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 
+	"github.com/t0mer/raptor/internal/actions"
 	"github.com/t0mer/raptor/internal/capture"
 	"github.com/t0mer/raptor/internal/config"
 	dnssrv "github.com/t0mer/raptor/internal/dns"
@@ -66,12 +67,16 @@ func run(cfg config.Config, logger *slog.Logger) error {
 	defer st.Close()
 
 	hub := sse.NewHub()
+	engine := actions.New(actions.WithSSRFLists(cfg.ActionAllow, cfg.ActionDeny, cfg.ActionAllowInternal))
+	actionsSvc := actions.NewService(engine, st)
+
 	capturer := capture.New(st, cfg.BaseURL,
 		capture.WithGlobalRequestLimit(cfg.MaxRequests),
 		capture.WithPublisher(hub),
 		capture.WithFilesDir(filepath.Join(cfg.Data, "files")),
+		capture.WithActions(actionsSvc),
 	)
-	srv := server.New(cfg, st, capturer, hub)
+	srv := server.New(cfg, st, capturer, hub, actionsSvc)
 
 	httpSrv := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),

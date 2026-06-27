@@ -3,8 +3,11 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/go-chi/chi/v5"
 
+	"github.com/t0mer/raptor/internal/actions"
 	"github.com/t0mer/raptor/internal/sse"
 	"github.com/t0mer/raptor/internal/store"
 )
@@ -14,16 +17,19 @@ type API struct {
 	store   *store.Store
 	baseURL string
 	hub     *sse.Hub
+	actions *actions.Service
 }
 
 // New constructs an API.
-func New(st *store.Store, baseURL string, hub *sse.Hub) *API {
-	return &API{store: st, baseURL: baseURL, hub: hub}
+func New(st *store.Store, baseURL string, hub *sse.Hub, actionsSvc *actions.Service) *API {
+	return &API{store: st, baseURL: baseURL, hub: hub, actions: actionsSvc}
 }
 
 // Routes returns a chi router mounted under /api/v1.
 func (a *API) Routes() chi.Router {
 	r := chi.NewRouter()
+
+	r.Get("/action-types", a.listActionTypes)
 
 	r.Route("/groups", func(r chi.Router) {
 		r.Get("/", a.listGroups)
@@ -45,6 +51,14 @@ func (a *API) Routes() chi.Router {
 
 			r.Get("/requests.csv", a.exportCSV)
 
+			r.Route("/actions", func(r chi.Router) {
+				r.Get("/", a.listActions)
+				r.Post("/", a.createAction)
+				r.Put("/{actionID}", a.updateAction)
+				r.Delete("/{actionID}", a.deleteAction)
+			})
+			r.Post("/test-action", a.testAction)
+
 			r.Route("/requests", func(r chi.Router) {
 				r.Get("/", a.listRequests)
 				r.Delete("/", a.deleteAllRequests)
@@ -53,9 +67,16 @@ func (a *API) Routes() chi.Router {
 				r.Get("/{requestID}/raw", a.rawRequest)
 				r.Delete("/{requestID}", a.deleteRequest)
 				r.Get("/{requestID}/files/{fileID}", a.downloadFile)
+				r.Get("/{requestID}/action-runs", a.listActionRuns)
+				r.Post("/{requestID}/execute", a.executeChain)
 			})
 		})
 	})
 
 	return r
+}
+
+// listActionTypes returns the registered action type names (for the UI editor).
+func (a *API) listActionTypes(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"data": actions.KnownTypes()})
 }

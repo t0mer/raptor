@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/t0mer/raptor/internal/actions"
 	"github.com/t0mer/raptor/internal/metrics"
 	"github.com/t0mer/raptor/internal/models"
 	"github.com/t0mer/raptor/internal/store"
@@ -46,6 +48,7 @@ type Capturer struct {
 	filesDir     string // directory for stored attachment/file blobs
 	limiter      *rateLimiter
 	pub          Publisher
+	actions      *actions.Service // optional; runs the action chain on HTTP capture
 }
 
 // Option configures a Capturer.
@@ -77,6 +80,11 @@ func WithGlobalRequestLimit(n int) Option {
 // WithFilesDir sets the directory where attachment/file blobs are written.
 func WithFilesDir(dir string) Option {
 	return func(c *Capturer) { c.filesDir = dir }
+}
+
+// WithActions enables the Custom Actions engine for HTTP capture.
+func WithActions(svc *actions.Service) Option {
+	return func(c *Capturer) { c.actions = svc }
 }
 
 // New constructs a Capturer.
@@ -131,12 +139,40 @@ func (c *Capturer) Handle(w http.ResponseWriter, r *http.Request, token *models.
 
 	req := c.buildRequest(r, token, now)
 
-	if err := c.persist(r.Context(), token, req); err != nil {
-		http.Error(w, "failed to store request", http.StatusInternalServerError)
-		return
+	// Run the Custom Actions chain (if enabled) before persisting/responding, so
+	// actions can override the response, extract data, or drop the request.
+	var engineResp *actions.Response
+	dontSave := false
+	var results []actions.RunResult
+	runActions := c.actions != nil && token.Actions
+	if runActions {
+		ec, res, err := c.actions.Execute(r.Context(), req, token)
+		if err != nil {
+			slog.Error("run actions", "token", token.UUID, "error", err)
+			runActions = false
+		} else {
+			results = res
+			req.CustomActionOutput, req.CustomActionErrors = actions.Summarise(res)
+			if ec.Response.Set {
+				engineResp = ec.Response
+			}
+			dontSave = ec.DontSave
+		}
 	}
 
-	c.writeResponse(w, token, statusOverride)
+	if !dontSave {
+		if err := c.persist(r.Context(), token, req); err != nil {
+			http.Error(w, "failed to store request", http.StatusInternalServerError)
+			return
+		}
+		if runActions && len(results) > 0 {
+			if err := c.actions.SaveRuns(r.Context(), req.UUID, results); err != nil {
+				slog.Warn("save action runs", "request", req.UUID, "error", err)
+			}
+		}
+	}
+
+	c.writeResponse(w, token, statusOverride, engineResp)
 }
 
 // Record stores a non-HTTP captured request (email, DNS) against a token,
@@ -217,15 +253,24 @@ func (c *Capturer) buildRequest(r *http.Request, token *models.Token, now time.T
 	}
 }
 
-func (c *Capturer) writeResponse(w http.ResponseWriter, token *models.Token, statusOverride *int) {
+// writeResponse renders the response. Precedence: an action-set response
+// overrides everything; otherwise a status override (the /{id}/{code} form)
+// overrides the token default; a token redirect applies only when no action
+// produced a response.
+func (c *Capturer) writeResponse(w http.ResponseWriter, token *models.Token, statusOverride *int, eng *actions.Response) {
 	h := w.Header()
 	if token.CORS {
 		h.Set("Access-Control-Allow-Origin", "*")
 		h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		h.Set("Access-Control-Allow-Headers", "*")
 	}
+	if eng != nil {
+		for k, v := range eng.Headers {
+			h.Set(k, v)
+		}
+	}
 
-	if token.Redirect != "" {
+	if token.Redirect != "" && eng == nil {
 		// Set Location directly rather than via http.Redirect, which would
 		// require a *http.Request to resolve relative targets (and panic on a
 		// nil URL). The configured value is used verbatim.
@@ -235,11 +280,7 @@ func (c *Capturer) writeResponse(w http.ResponseWriter, token *models.Token, sta
 	}
 
 	ct := token.DefaultContentType
-	if ct == "" {
-		ct = "text/plain"
-	}
-	h.Set("Content-Type", ct)
-
+	content := token.DefaultContent
 	status := token.DefaultStatus
 	if status == 0 {
 		status = http.StatusOK
@@ -247,8 +288,21 @@ func (c *Capturer) writeResponse(w http.ResponseWriter, token *models.Token, sta
 	if statusOverride != nil {
 		status = *statusOverride
 	}
+	if eng != nil {
+		content = eng.Content
+		if eng.ContentType != "" {
+			ct = eng.ContentType
+		}
+		if eng.Status != 0 {
+			status = eng.Status
+		}
+	}
+	if ct == "" {
+		ct = "text/plain"
+	}
+	h.Set("Content-Type", ct)
 	w.WriteHeader(status)
-	_, _ = io.WriteString(w, token.DefaultContent)
+	_, _ = io.WriteString(w, content)
 }
 
 // IsExpired reports whether a token's TTL (expiry seconds from creation) has

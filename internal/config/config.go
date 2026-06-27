@@ -34,6 +34,12 @@ type Config struct {
 	LogLevel    string // --log-level / RAPTOR_LOG_LEVEL
 	RequireAuth bool   // --require-auth / RAPTOR_REQUIRE_AUTH
 
+	// Action SSRF lists (comma-separated host suffixes / CIDRs) for
+	// http_request/script actions. ActionAllow, when set, is a strict allow-list.
+	ActionAllow         []string // --action-allow / RAPTOR_ACTION_ALLOW
+	ActionDeny          []string // --action-deny / RAPTOR_ACTION_DENY
+	ActionAllowInternal bool     // --action-allow-internal / RAPTOR_ACTION_ALLOW_INTERNAL
+
 	// ShowVersion is true when --version was passed; the caller prints the
 	// version and exits.
 	ShowVersion bool
@@ -76,11 +82,26 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 	fs.StringVar(&cfg.GeoIPDB, "geoip-db", cfg.GeoIPDB, "optional MaxMind GeoLite2 DB path for request geo")
 	fs.StringVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "log level: debug | info | warning | error")
 	fs.BoolVar(&cfg.RequireAuth, "require-auth", cfg.RequireAuth, "gate the management API behind an API key")
+	allow := fs.String("action-allow", "", "comma-separated allow-list of hosts for outbound actions")
+	deny := fs.String("action-deny", "", "comma-separated deny-list of hosts for outbound actions")
+	fs.BoolVar(&cfg.ActionAllowInternal, "action-allow-internal", false, "permit outbound actions to reach internal/loopback hosts")
 	fs.BoolVarP(&cfg.ShowVersion, "version", "v", false, "print version and exit")
 
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}
+
+	if v := getenv("RAPTOR_ACTION_ALLOW"); v != "" {
+		*allow = v
+	}
+	if v := getenv("RAPTOR_ACTION_DENY"); v != "" {
+		*deny = v
+	}
+	if err := envBool(getenv, "RAPTOR_ACTION_ALLOW_INTERNAL", &cfg.ActionAllowInternal); err != nil {
+		return Config{}, err
+	}
+	cfg.ActionAllow = splitList(*allow)
+	cfg.ActionDeny = splitList(*deny)
 
 	// Apply environment overrides (env wins over flags per house convention).
 	if err := applyEnv(&cfg, getenv); err != nil {
@@ -154,6 +175,21 @@ func envBool(getenv func(string) string, key string, dst *bool) error {
 	}
 	*dst = b
 	return nil
+}
+
+// splitList parses a comma-separated list, trimming spaces and empties.
+func splitList(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func validLogLevel(level string) bool {
