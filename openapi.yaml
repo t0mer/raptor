@@ -1,0 +1,260 @@
+openapi: 3.0.3
+info:
+  title: Raptor API
+  description: |
+    Self-hosted webhook/email/DNS capture & inspection — a Go rewrite of
+    webhook.site. This document is the spec-first source of truth for the
+    versioned management API under `/api/v1`. The SPA is a pure client of it.
+
+    **Authentication.** When `--require-auth` is enabled, send `Api-Key: <uuid>`.
+    With no key configured the API is open (first-run bootstrap mode).
+  version: "1.0"
+servers:
+  - url: /api/v1
+paths:
+  /tokens:
+    get:
+      summary: List tokens
+      operationId: listTokens
+      responses:
+        "200":
+          description: All tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Token" }
+    post:
+      summary: Create a token
+      operationId: createToken
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TokenInput" }
+      responses:
+        "201":
+          description: Created token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Token" }
+        "409": { description: Alias already in use }
+  /tokens/{tokenID}:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+    get:
+      summary: Get a token
+      operationId: getToken
+      responses:
+        "200":
+          description: Token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Token" }
+        "404": { description: Not found }
+    put:
+      summary: Update a token
+      operationId: updateToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TokenInput" }
+      responses:
+        "200":
+          description: Updated token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Token" }
+    delete:
+      summary: Delete a token and all its data
+      operationId: deleteToken
+      responses:
+        "204": { description: Deleted }
+        "404": { description: Not found }
+  /tokens/{tokenID}/requests:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+    get:
+      summary: List captured requests (paged, newest first)
+      operationId: listRequests
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: per_page, in: query, schema: { type: integer, default: 50, maximum: 100 } }
+      responses:
+        "200":
+          description: Page of requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Request" }
+                  total: { type: integer }
+                  page: { type: integer }
+                  per_page: { type: integer }
+    delete:
+      summary: Delete all requests for the token
+      operationId: deleteAllRequests
+      responses:
+        "200":
+          description: Number deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: integer }
+  /tokens/{tokenID}/requests/latest:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+    get:
+      summary: Get the most recent request
+      operationId: latestRequest
+      responses:
+        "200":
+          description: Request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "404": { description: No requests yet }
+  /tokens/{tokenID}/requests/{requestID}:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+      - $ref: "#/components/parameters/RequestID"
+    get:
+      summary: Get a single request
+      operationId: getRequest
+      responses:
+        "200":
+          description: Request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Request" }
+        "404": { description: Not found }
+    delete:
+      summary: Delete a single request
+      operationId: deleteRequest
+      responses:
+        "204": { description: Deleted }
+        "404": { description: Not found }
+  /tokens/{tokenID}/requests/{requestID}/raw:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+      - $ref: "#/components/parameters/RequestID"
+    get:
+      summary: Get the raw HTTP representation of a request
+      operationId: rawRequest
+      responses:
+        "200":
+          description: Raw request
+          content:
+            text/plain:
+              schema: { type: string }
+  /tokens/{tokenID}/requests/{requestID}/files/{fileID}:
+    parameters:
+      - $ref: "#/components/parameters/TokenID"
+      - $ref: "#/components/parameters/RequestID"
+      - { name: fileID, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Download a request's attached file
+      operationId: downloadFile
+      responses:
+        "200":
+          description: File blob
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "404": { description: Not found }
+components:
+  parameters:
+    TokenID:
+      name: tokenID
+      in: path
+      required: true
+      description: Token UUID or alias
+      schema: { type: string }
+    RequestID:
+      name: requestID
+      in: path
+      required: true
+      schema: { type: string }
+  schemas:
+    TokenInput:
+      type: object
+      properties:
+        alias: { type: string }
+        default_status: { type: integer, default: 200 }
+        default_content: { type: string }
+        default_content_type: { type: string, default: text/plain }
+        timeout: { type: integer, description: "drives the 100/timeout rpm rate limit; 0 = unlimited" }
+        cors: { type: boolean }
+        expiry: { type: integer, description: "TTL seconds from creation; 0 = never" }
+        actions: { type: boolean }
+        request_limit: { type: integer, description: "max stored requests; 0 = unlimited" }
+        description: { type: string }
+        listen: { type: integer }
+        redirect: { type: string }
+        group_id: { type: string }
+        clone_from: { type: string, description: "copy settings from an existing token UUID" }
+    Token:
+      type: object
+      properties:
+        uuid: { type: string }
+        alias: { type: string }
+        url: { type: string, description: "copyable capture URL" }
+        default_status: { type: integer }
+        default_content: { type: string }
+        default_content_type: { type: string }
+        timeout: { type: integer }
+        cors: { type: boolean }
+        expiry: { type: integer }
+        actions: { type: boolean }
+        request_limit: { type: integer }
+        description: { type: string }
+        listen: { type: integer }
+        redirect: { type: string }
+        group_id: { type: string }
+        premium: { type: boolean }
+        has_password: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        latest_request_at: { type: string, format: date-time, nullable: true }
+    Request:
+      type: object
+      properties:
+        uuid: { type: string }
+        token_id: { type: string }
+        type: { type: string, enum: [web, email, dns] }
+        method: { type: string }
+        ip: { type: string }
+        hostname: { type: string }
+        user_agent: { type: string }
+        content: { type: string }
+        query: { type: object, additionalProperties: { type: array, items: { type: string } } }
+        headers: { type: object, additionalProperties: { type: array, items: { type: string } } }
+        url: { type: string }
+        size: { type: integer }
+        sorting: { type: integer, format: int64 }
+        files:
+          type: array
+          items: { $ref: "#/components/schemas/File" }
+        created_at: { type: string, format: date-time }
+    File:
+      type: object
+      properties:
+        id: { type: string }
+        request_id: { type: string }
+        filename: { type: string }
+        content_type: { type: string }
+        size: { type: integer }
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: Api-Key
