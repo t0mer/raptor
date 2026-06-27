@@ -52,7 +52,7 @@ func newHTTPRequest(a *models.Action) (runner, error) {
 
 func (h *httpRequest) run(ctx context.Context, ec *ExecContext) error {
 	url := ec.Interp(h.url)
-	if err := ec.engineRef.ssrf.check(url); err != nil {
+	if err := ec.engineRef.ssrf.Check(url); err != nil {
 		return fmt.Errorf("http_request blocked: %w", err)
 	}
 

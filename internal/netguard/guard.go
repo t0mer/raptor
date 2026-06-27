@@ -1,4 +1,9 @@
-package actions
+// Package netguard restricts outbound HTTP destinations to mitigate SSRF. It is
+// shared by every feature that makes server-side requests on behalf of a token
+// owner: Custom Actions (http_request, script), request replay, and schedule
+// monitoring. The deny-list is enforced against the *resolved* IP at dial time
+// (defeating DNS-rebind and IP-encoding bypasses) and across redirects.
+package netguard
 
 import (
 	"errors"
@@ -11,19 +16,19 @@ import (
 	"time"
 )
 
-// ssrfGuard restricts which hosts outbound actions (http_request, script) may
-// reach. When allow is non-empty it is a strict allow-list of host suffixes;
-// deny host suffixes always block. By default, requests to internal targets
-// (loopback, link-local incl. cloud metadata, and private ranges) are blocked
-// — set allowInternal (via --action-allow-internal) to permit them.
-type ssrfGuard struct {
+// Guard holds the allow/deny policy. When allow is non-empty it is a strict
+// allow-list of host suffixes; deny suffixes/CIDRs always block. By default,
+// requests to internal targets (loopback, link-local incl. cloud metadata,
+// private and CGNAT ranges) are blocked unless allowInternal is set.
+type Guard struct {
 	allow         []string
 	deny          []string
 	allowInternal bool
 }
 
-func newSSRFGuard(allow, deny []string, allowInternal bool) *ssrfGuard {
-	return &ssrfGuard{allow: normalize(allow), deny: normalize(deny), allowInternal: allowInternal}
+// New builds a Guard.
+func New(allow, deny []string, allowInternal bool) *Guard {
+	return &Guard{allow: normalize(allow), deny: normalize(deny), allowInternal: allowInternal}
 }
 
 func normalize(list []string) []string {
@@ -37,13 +42,9 @@ func normalize(list []string) []string {
 	return out
 }
 
-// active reports whether any allow/deny rule is configured.
-func (g *ssrfGuard) active() bool { return len(g.allow) > 0 || len(g.deny) > 0 }
-
-// client builds an HTTP client that enforces the guard robustly: the deny-list
-// is checked against the *resolved* IP at dial time (defeating DNS-rebind and
-// IP-encoding bypasses), and every redirect target is re-validated.
-func (g *ssrfGuard) client(timeout time.Duration) *http.Client {
+// Client builds an HTTP client that enforces the guard: the policy is checked
+// against the resolved IP at dial time and every redirect target is re-validated.
+func (g *Guard) Client(timeout time.Duration) *http.Client {
 	dialer := &net.Dialer{
 		Timeout:   10 * time.Second,
 		KeepAlive: 30 * time.Second,
@@ -57,8 +58,7 @@ func (g *ssrfGuard) client(timeout time.Duration) *http.Client {
 	}
 	transport := &http.Transport{
 		// No environment proxy: a proxy would make the dial-time IP check
-		// validate the proxy rather than the real target, weakening SSRF
-		// protection.
+		// validate the proxy rather than the real target.
 		Proxy:                 nil,
 		DialContext:           dialer.DialContext,
 		ForceAttemptHTTP2:     true,
@@ -74,17 +74,14 @@ func (g *ssrfGuard) client(timeout time.Duration) *http.Client {
 			if len(via) >= 10 {
 				return errors.New("stopped after 10 redirects")
 			}
-			return g.check(req.URL.String())
+			return g.Check(req.URL.String())
 		},
 	}
 }
 
 // checkIP blocks a connection whose resolved IP matches a deny entry or, unless
-// allowInternal is set, targets an internal range. This runs after DNS
-// resolution, so a hostname that resolves to a denied/internal address (or an
-// obfuscated/encoded IP) is still caught — defeating DNS-rebind and the
-// cloud-metadata SSRF vector by default.
-func (g *ssrfGuard) checkIP(ip net.IP) error {
+// allowInternal is set, targets an internal range.
+func (g *Guard) checkIP(ip net.IP) error {
 	if ip == nil {
 		return nil
 	}
@@ -98,6 +95,9 @@ func (g *ssrfGuard) checkIP(ip net.IP) error {
 	}
 	return nil
 }
+
+// CheckIP exposes the resolved-IP policy check (for callers that resolve first).
+func (g *Guard) CheckIP(ip net.IP) error { return g.checkIP(ip) }
 
 // cgnat is the RFC 6598 shared address space (100.64.0.0/10), used by some cloud
 // metadata endpoints (e.g. Alibaba 100.100.100.200) and carrier-grade NAT.
@@ -126,8 +126,8 @@ func ipMatchesPattern(ip net.IP, pattern string) bool {
 	return false
 }
 
-// check validates a target URL against the guard, returning an error if blocked.
-func (g *ssrfGuard) check(rawURL string) error {
+// Check validates a target URL (scheme + host policy) before a request is made.
+func (g *Guard) Check(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("invalid url: %w", err)
@@ -155,8 +155,6 @@ func (g *ssrfGuard) check(rawURL string) error {
 	return nil
 }
 
-// hostMatches reports whether host equals or is a subdomain of pattern, or (when
-// pattern is an IP/CIDR) falls within it.
 func hostMatches(host, pattern string) bool {
 	if host == pattern || strings.HasSuffix(host, "."+pattern) {
 		return true

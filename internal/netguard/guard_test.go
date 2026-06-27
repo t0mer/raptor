@@ -1,4 +1,4 @@
-package actions
+package netguard
 
 import (
 	"net"
@@ -6,19 +6,19 @@ import (
 )
 
 func TestSSRFCheckScheme(t *testing.T) {
-	g := newSSRFGuard(nil, nil, true)
+	g := New(nil, nil, true)
 	for _, bad := range []string{"file:///etc/passwd", "gopher://x/", "ftp://h/"} {
-		if err := g.check(bad); err == nil {
+		if err := g.Check(bad); err == nil {
 			t.Errorf("scheme should be blocked: %s", bad)
 		}
 	}
-	if err := g.check("https://example.com/x"); err != nil {
+	if err := g.Check("https://example.com/x"); err != nil {
 		t.Errorf("https should be allowed: %v", err)
 	}
 }
 
 func TestSSRFInternalRangesBlocked(t *testing.T) {
-	g := newSSRFGuard(nil, nil, false)
+	g := New(nil, nil, false)
 	internal := []string{
 		"127.0.0.1",       // loopback
 		"169.254.169.254", // link-local / metadata
@@ -30,29 +30,29 @@ func TestSSRFInternalRangesBlocked(t *testing.T) {
 		"::1",             // IPv6 loopback
 	}
 	for _, s := range internal {
-		if err := g.checkIP(net.ParseIP(s)); err == nil {
+		if err := g.CheckIP(net.ParseIP(s)); err == nil {
 			t.Errorf("internal IP %s should be blocked by default", s)
 		}
 	}
 	// Public IP allowed.
-	if err := g.checkIP(net.ParseIP("8.8.8.8")); err != nil {
+	if err := g.CheckIP(net.ParseIP("8.8.8.8")); err != nil {
 		t.Errorf("public IP should be allowed: %v", err)
 	}
 }
 
 func TestSSRFAllowInternal(t *testing.T) {
-	g := newSSRFGuard(nil, nil, true)
-	if err := g.checkIP(net.ParseIP("127.0.0.1")); err != nil {
+	g := New(nil, nil, true)
+	if err := g.CheckIP(net.ParseIP("127.0.0.1")); err != nil {
 		t.Errorf("allowInternal should permit loopback: %v", err)
 	}
 }
 
 func TestSSRFDenyByResolvedIP(t *testing.T) {
-	g := newSSRFGuard(nil, []string{"203.0.113.0/24"}, true)
-	if err := g.checkIP(net.ParseIP("203.0.113.5")); err == nil {
+	g := New(nil, []string{"203.0.113.0/24"}, true)
+	if err := g.CheckIP(net.ParseIP("203.0.113.5")); err == nil {
 		t.Error("deny CIDR should block matching IP")
 	}
-	if err := g.checkIP(net.ParseIP("8.8.8.8")); err != nil {
+	if err := g.CheckIP(net.ParseIP("8.8.8.8")); err != nil {
 		t.Errorf("non-denied IP should pass: %v", err)
 	}
 }

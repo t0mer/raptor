@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/t0mer/raptor/internal/models"
+	"github.com/t0mer/raptor/internal/netguard"
 )
 
 // Engine executes action chains. It is safe for concurrent use.
 type Engine struct {
 	httpClient *http.Client
-	ssrf       *ssrfGuard
+	ssrf       *netguard.Guard
 }
 
 // Option configures an Engine.
@@ -29,21 +30,31 @@ func WithHTTPClient(c *http.Client) Option {
 
 // WithSSRFLists restricts outbound HTTP/script hosts. allow (if non-empty) is a
 // strict allow-list; deny always blocks. Internal targets are blocked unless
-// allowInternal is true. See ssrf.go.
+// allowInternal is true.
 func WithSSRFLists(allow, deny []string, allowInternal bool) Option {
-	return func(e *Engine) { e.ssrf = newSSRFGuard(allow, deny, allowInternal) }
+	return func(e *Engine) { e.ssrf = netguard.New(allow, deny, allowInternal) }
+}
+
+// WithGuard sets a shared SSRF guard (so actions, replay and schedules use one
+// policy). Takes precedence over WithSSRFLists when both are supplied.
+func WithGuard(g *netguard.Guard) Option {
+	return func(e *Engine) {
+		if g != nil {
+			e.ssrf = g
+		}
+	}
 }
 
 // New builds an Engine. Unless WithHTTPClient overrides it, the outbound HTTP
 // client is constructed from the SSRF guard so the deny-list is enforced against
 // resolved IPs and across redirects.
 func New(opts ...Option) *Engine {
-	e := &Engine{ssrf: newSSRFGuard(nil, nil, false)}
+	e := &Engine{ssrf: netguard.New(nil, nil, false)}
 	for _, o := range opts {
 		o(e)
 	}
 	if e.httpClient == nil {
-		e.httpClient = e.ssrf.client(15 * time.Second)
+		e.httpClient = e.ssrf.Client(15 * time.Second)
 	}
 	return e
 }

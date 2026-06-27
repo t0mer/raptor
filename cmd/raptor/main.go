@@ -23,6 +23,7 @@ import (
 	"github.com/t0mer/raptor/internal/crypto"
 	dnssrv "github.com/t0mer/raptor/internal/dns"
 	"github.com/t0mer/raptor/internal/email"
+	"github.com/t0mer/raptor/internal/netguard"
 	"github.com/t0mer/raptor/internal/schedules"
 	"github.com/t0mer/raptor/internal/server"
 	"github.com/t0mer/raptor/internal/sse"
@@ -81,7 +82,9 @@ func run(cfg config.Config, logger *slog.Logger) error {
 	st.SetCipher(cipher)
 
 	hub := sse.NewHub()
-	engine := actions.New(actions.WithSSRFLists(cfg.ActionAllow, cfg.ActionDeny, cfg.ActionAllowInternal))
+	// One SSRF guard shared by actions, replay and schedule monitoring.
+	guard := netguard.New(cfg.ActionAllow, cfg.ActionDeny, cfg.ActionAllowInternal)
+	engine := actions.New(actions.WithGuard(guard))
 	actionsSvc := actions.NewService(engine, st)
 
 	capturer := capture.New(st, cfg.BaseURL,
@@ -90,8 +93,8 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		capture.WithFilesDir(filepath.Join(cfg.Data, "files")),
 		capture.WithActions(actionsSvc),
 	)
-	scheduleRunner := schedules.New(st, actionsSvc, schedules.WithLogger(logger))
-	srv := server.New(cfg, st, capturer, hub, actionsSvc, scheduleRunner)
+	scheduleRunner := schedules.New(st, actionsSvc, schedules.WithLogger(logger), schedules.WithGuard(guard))
+	srv := server.New(cfg, st, capturer, hub, actionsSvc, scheduleRunner, guard)
 
 	httpSrv := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),

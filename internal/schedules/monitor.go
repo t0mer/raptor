@@ -18,6 +18,7 @@ import (
 
 	"github.com/t0mer/raptor/internal/actions"
 	"github.com/t0mer/raptor/internal/models"
+	"github.com/t0mer/raptor/internal/netguard"
 	"github.com/t0mer/raptor/internal/notify"
 	"github.com/t0mer/raptor/internal/store"
 )
@@ -60,12 +61,21 @@ func WithInterval(d time.Duration) Option {
 	}
 }
 
+// WithGuard sets the SSRF guard used for monitored URLs (default: block internal).
+func WithGuard(g *netguard.Guard) Option {
+	return func(r *Runner) {
+		if g != nil {
+			r.client = g.Client(20 * time.Second)
+		}
+	}
+}
+
 // New builds a Runner.
 func New(st *store.Store, actionsSvc *actions.Service, opts ...Option) *Runner {
 	r := &Runner{
 		store:    st,
 		actions:  actionsSvc,
-		client:   &http.Client{Timeout: 20 * time.Second},
+		client:   netguard.New(nil, nil, false).Client(20 * time.Second),
 		logger:   slog.Default(),
 		interval: 30 * time.Second,
 		now:      time.Now,

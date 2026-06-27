@@ -9,9 +9,6 @@ import (
 	"github.com/t0mer/raptor/internal/models"
 )
 
-// replayClient bounds replay delivery attempts.
-var replayClient = &http.Client{Timeout: 15 * time.Second}
-
 type replayRequest struct {
 	TargetURL string `json:"target_url"`
 	Query     string `json:"q"`
@@ -37,6 +34,11 @@ func (a *API) replayRequests(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "target_url is required")
 		return
 	}
+	if err := a.guard.Check(body.TargetURL); err != nil {
+		writeError(w, http.StatusBadRequest, "target_url blocked: "+err.Error())
+		return
+	}
+	client := a.guard.Client(15 * time.Second)
 
 	filter := filterFrom(body.Query, body.DateFrom, body.DateTo)
 	limit := body.Limit
@@ -55,7 +57,7 @@ func (a *API) replayRequests(w http.ResponseWriter, r *http.Request) {
 		if i >= limit {
 			break
 		}
-		if err := replayOne(r.Context(), body.TargetURL, req); err != nil {
+		if err := replayOne(r.Context(), client, body.TargetURL, req); err != nil {
 			failed++
 			continue
 		}
@@ -64,7 +66,7 @@ func (a *API) replayRequests(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"replayed": replayed, "failed": failed})
 }
 
-func replayOne(ctx context.Context, target string, src *models.Request) error {
+func replayOne(ctx context.Context, client *http.Client, target string, src *models.Request) error {
 	method := src.Method
 	if method == "" {
 		method = http.MethodGet
@@ -81,7 +83,7 @@ func replayOne(ctx context.Context, target string, src *models.Request) error {
 			req.Header.Add(k, v)
 		}
 	}
-	resp, err := replayClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -89,9 +91,12 @@ func replayOne(ctx context.Context, target string, src *models.Request) error {
 	return nil
 }
 
+// skipReplayHeader drops hop-by-hop/host headers and, crucially, the original
+// caller's credential headers — they must not be leaked to the replay target.
 func skipReplayHeader(k string) bool {
 	switch strings.ToLower(k) {
-	case "host", "content-length", "connection", "transfer-encoding", "keep-alive":
+	case "host", "content-length", "connection", "transfer-encoding", "keep-alive",
+		"authorization", "cookie", "proxy-authorization":
 		return true
 	}
 	return false

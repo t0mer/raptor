@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/t0mer/raptor/internal/actions"
+	"github.com/t0mer/raptor/internal/netguard"
 	"github.com/t0mer/raptor/internal/schedules"
 	"github.com/t0mer/raptor/internal/sse"
 	"github.com/t0mer/raptor/internal/store"
@@ -27,11 +28,15 @@ type API struct {
 	actions   *actions.Service
 	schedules *schedules.Runner
 	forwarder ResponseForwarder
+	guard     *netguard.Guard
 }
 
 // New constructs an API.
-func New(st *store.Store, baseURL string, hub *sse.Hub, actionsSvc *actions.Service, runner *schedules.Runner, forwarder ResponseForwarder) *API {
-	return &API{store: st, baseURL: baseURL, hub: hub, actions: actionsSvc, schedules: runner, forwarder: forwarder}
+func New(st *store.Store, baseURL string, hub *sse.Hub, actionsSvc *actions.Service, runner *schedules.Runner, forwarder ResponseForwarder, guard *netguard.Guard) *API {
+	if guard == nil {
+		guard = netguard.New(nil, nil, false)
+	}
+	return &API{store: st, baseURL: baseURL, hub: hub, actions: actionsSvc, schedules: runner, forwarder: forwarder, guard: guard}
 }
 
 // Routes returns a chi router mounted under /api/v1.

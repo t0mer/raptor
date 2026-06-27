@@ -11,6 +11,7 @@ import (
 
 	"github.com/t0mer/raptor/internal/actions"
 	"github.com/t0mer/raptor/internal/models"
+	"github.com/t0mer/raptor/internal/netguard"
 	"github.com/t0mer/raptor/internal/store"
 )
 
@@ -22,7 +23,8 @@ func newRunner(t *testing.T) (*Runner, *store.Store) {
 	}
 	t.Cleanup(func() { st.Close() })
 	svc := actions.NewService(actions.New(actions.WithSSRFLists(nil, nil, true)), st)
-	return New(st, svc), st
+	// Tests hit httptest loopback servers, so internal targets must be allowed.
+	return New(st, svc, WithGuard(netguard.New(nil, nil, true))), st
 }
 
 func mkSchedule(t *testing.T, st *store.Store, sc *models.Schedule) {

@@ -15,6 +15,7 @@ import (
 	"github.com/t0mer/raptor/internal/capture"
 	"github.com/t0mer/raptor/internal/config"
 	"github.com/t0mer/raptor/internal/metrics"
+	"github.com/t0mer/raptor/internal/netguard"
 	"github.com/t0mer/raptor/internal/schedules"
 	"github.com/t0mer/raptor/internal/sse"
 	"github.com/t0mer/raptor/internal/store"
@@ -29,12 +30,13 @@ type Server struct {
 	hub       *sse.Hub
 	actions   *actions.Service
 	schedules *schedules.Runner
+	guard     *netguard.Guard
 	router    chi.Router
 }
 
 // New builds a Server and its router.
-func New(cfg config.Config, st *store.Store, capturer *capture.Capturer, hub *sse.Hub, actionsSvc *actions.Service, runner *schedules.Runner) *Server {
-	s := &Server{cfg: cfg, store: st, capturer: capturer, hub: hub, actions: actionsSvc, schedules: runner}
+func New(cfg config.Config, st *store.Store, capturer *capture.Capturer, hub *sse.Hub, actionsSvc *actions.Service, runner *schedules.Runner, guard *netguard.Guard) *Server {
+	s := &Server{cfg: cfg, store: st, capturer: capturer, hub: hub, actions: actionsSvc, schedules: runner, guard: guard}
 	s.router = s.buildRouter()
 	return s
 }
@@ -55,7 +57,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Handle("/metrics", metrics.Handler())
 
 	// Management API (versioned).
-	r.Mount("/api/v1", api.New(s.store, s.cfg.BaseURL, s.hub, s.actions, s.schedules, s.capturer).Routes())
+	r.Mount("/api/v1", api.New(s.store, s.cfg.BaseURL, s.hub, s.actions, s.schedules, s.capturer, s.guard).Routes())
 
 	// API docs (spec-first source of truth) with an embedded Swagger UI — no
 	// external CDN dependency, so docs work fully offline.
