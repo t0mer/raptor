@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import type { CapturedRequest } from '../api'
+import { useMemo, useState } from 'react'
+import type { ActionRun, CapturedRequest } from '../api'
 import { api } from '../api'
 import { badgeLabel, checkColor, copyText, methodColor, relativeTime } from '../lib'
 import { CopyIcon, TrashIcon } from './icons'
@@ -103,6 +103,8 @@ export function RequestDetail({ tokenId, request, onDelete }: Props) {
         ) : (
           <WebView request={request} body={body} />
         )}
+
+        <ActionsSection tokenId={tokenId} request={request} />
 
         {request.files && request.files.length > 0 && (
           <Section title="Files">
@@ -218,6 +220,65 @@ function EmailView({ request, body }: { request: CapturedRequest; body: string }
 
       <KeyValues title="Headers" data={request.headers} />
     </>
+  )
+}
+
+function ActionsSection({ tokenId, request }: { tokenId: string; request: CapturedRequest }) {
+  const [runs, setRuns] = useState<ActionRun[] | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const output = request.custom_action_output ?? {}
+  const errors = request.custom_action_errors ?? {}
+  const hasStored = Object.keys(output).length > 0 || Object.keys(errors).length > 0
+
+  async function replay() {
+    setBusy(true)
+    try {
+      setRuns(await api.executeChain(tokenId, request.uuid))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!hasStored && runs === null && request.type !== 'web') return null
+
+  return (
+    <Section title="Custom Actions">
+      <div className="space-y-2">
+        {hasStored && runs === null && (
+          <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs space-y-1">
+            {Object.entries(output).map(([k, v]) => (
+              <div key={k} className="font-mono">
+                <span className="text-muted">{k}:</span> {String(v)}
+              </div>
+            ))}
+            {Object.entries(errors).map(([k, v]) => (
+              <div key={k} className="font-mono text-err">
+                {k}: {String(v)}
+              </div>
+            ))}
+          </div>
+        )}
+        {runs?.map((r) => (
+          <div
+            key={r.id}
+            className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-mono"
+          >
+            <span className="text-muted">
+              {r.position}. {r.action_name || r.action_type}:
+            </span>{' '}
+            {r.error ? <span className="text-err">{r.error}</span> : r.output || '(no output)'}
+          </div>
+        ))}
+        <button
+          onClick={replay}
+          disabled={busy}
+          className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-surface-2 disabled:opacity-50"
+        >
+          {busy ? 'Replaying…' : 'Replay actions'}
+        </button>
+      </div>
+    </Section>
   )
 }
 

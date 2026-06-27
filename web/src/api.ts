@@ -48,6 +48,8 @@ export interface CapturedRequest {
   sorting: number
   files?: RequestFile[]
   created_at: string
+  custom_action_output?: Record<string, unknown>
+  custom_action_errors?: Record<string, unknown>
   // Email-specific (type === 'email')
   sender?: string
   message_id?: string
@@ -69,6 +71,42 @@ export interface Group {
   name: string
   color?: string
   created_at: string
+}
+
+export interface Action {
+  uuid: string
+  token_id: string
+  type: string
+  name: string
+  position: number
+  disabled: boolean
+  parameters: Record<string, unknown>
+}
+
+export interface ActionRun {
+  id: string
+  action_type: string
+  action_name: string
+  position: number
+  output: string
+  error: string
+  created_at: string
+}
+
+export interface ActionInput {
+  type: string
+  name?: string
+  disabled?: boolean
+  parameters?: Record<string, unknown>
+}
+
+export interface TestActionResult {
+  output: string
+  error: string
+  variables: Record<string, string>
+  response: { status: number; content: string; content_type: string }
+  dont_save: boolean
+  stopped: boolean
 }
 
 export type TokenInput = Partial<{
@@ -123,6 +161,24 @@ export const api = {
     const qs = q ? `?q=${encodeURIComponent(q)}` : ''
     return req<{ deleted: number }>(`/tokens/${id}/requests${qs}`, { method: 'DELETE' })
   },
+
+  listActionTypes: () => req<{ data: string[] }>('/action-types').then((r) => r.data ?? []),
+  listActions: (id: string) =>
+    req<{ data: Action[] }>(`/tokens/${id}/actions`).then((r) => r.data ?? []),
+  createAction: (id: string, body: ActionInput) =>
+    req<Action>(`/tokens/${id}/actions`, { method: 'POST', body: JSON.stringify(body) }),
+  updateAction: (id: string, aid: string, body: ActionInput) =>
+    req<Action>(`/tokens/${id}/actions/${aid}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteAction: (id: string, aid: string) =>
+    req<void>(`/tokens/${id}/actions/${aid}`, { method: 'DELETE' }),
+  testAction: (id: string, body: ActionInput) =>
+    req<TestActionResult>(`/tokens/${id}/test-action`, { method: 'POST', body: JSON.stringify(body) }),
+  listActionRuns: (id: string, rid: string) =>
+    req<{ data: ActionRun[] }>(`/tokens/${id}/requests/${rid}/action-runs`).then((r) => r.data ?? []),
+  executeChain: (id: string, rid: string) =>
+    req<{ data: ActionRun[] }>(`/tokens/${id}/requests/${rid}/execute`, { method: 'POST' }).then(
+      (r) => r.data ?? [],
+    ),
 
   listGroups: () => req<{ data: Group[] }>('/groups').then((r) => r.data ?? []),
   createGroup: (name: string, color = '') =>

@@ -9,6 +9,7 @@ import { RequestDetail } from './components/RequestDetail'
 import { SettingsDialog } from './components/SettingsDialog'
 import { SearchBar } from './components/SearchBar'
 import { ControlPanel } from './components/ControlPanel'
+import { ActionsEditor } from './components/ActionsEditor'
 import { CopyIcon, SettingsIcon, TrashIcon } from './components/icons'
 
 const ACTIVE_KEY = 'raptor-active'
@@ -33,6 +34,7 @@ export default function App() {
   const [requests, setRequests] = useState<CapturedRequest[]>([])
   const [selected, setSelected] = useState<CapturedRequest | null>(null)
   const [showSettings, setShowSettings] = useState(false)
+  const [showActions, setShowActions] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -247,6 +249,7 @@ export default function App() {
               copied={copied}
               onCopy={copyURL}
               onSettings={() => setShowSettings(true)}
+              onActions={() => setShowActions(true)}
               onClear={handleClear}
             />
             <div className="flex-1 flex min-h-0">
@@ -317,6 +320,10 @@ export default function App() {
           onDelete={() => handleDeleteToken(activeToken.uuid)}
         />
       )}
+
+      {showActions && activeToken && (
+        <ActionsEditor tokenId={activeToken.uuid} onClose={() => setShowActions(false)} />
+      )}
     </div>
   )
 }
@@ -326,12 +333,14 @@ function TokenBar({
   copied,
   onCopy,
   onSettings,
+  onActions,
   onClear,
 }: {
   token: Token
   copied: boolean
   onCopy: () => void
   onSettings: () => void
+  onActions: () => void
   onClear: () => void
 }) {
   return (
@@ -346,6 +355,14 @@ function TokenBar({
       </button>
       {copied && <span className="text-xs text-ok shrink-0">copied</span>}
       <div className="ml-auto flex items-center gap-1 shrink-0">
+        <button
+          onClick={onActions}
+          className={`text-xs px-2 py-1 rounded-lg hover:bg-surface-2 ${
+            token.actions ? 'text-accent' : 'text-muted'
+          }`}
+        >
+          Actions
+        </button>
         <a
           href={api.csvURL(token.uuid)}
           className="text-xs px-2 py-1 rounded-lg hover:bg-surface-2 text-muted"
