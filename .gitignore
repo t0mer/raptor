@@ -1,32 +1,62 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
+# Claude / AI assistant context — local only, never track
+CLAUDE.md
+.claude/
+.cursor/
+.aider*
+
+# Design / implementation / planning docs — local only
+/docs/
+docs/*
+*.design.md
+*.implementation.md
+
+# Build output
+/dist/
+/bin/
+/build/
+
+# Go
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-
-# Test binary, built with `go test -c`
 *.test
-
-# Code coverage profiles and other test artifacts
 *.out
 coverage.*
 *.coverprofile
 profile.cov
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
 go.work
 go.work.sum
+vendor/
 
-# env file
+# Frontend
+web/node_modules/
+web/dist/
+web/ui/node_modules/
+web/ui/dist/
+web/.vite/
+*.log
+npm-debug.log*
+
+# Local dev config / data
 .env
+.env.*
+!.env.example
+/data/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
 
-# Editor/IDE
-# .idea/
-# .vscode/
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Embedded UI — keep the placeholder so the embed compiles pre-build
+!/internal/webui/dist/.gitkeep
+
+# Local security scan output
+scans/
