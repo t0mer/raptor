@@ -36,6 +36,14 @@ type Request struct {
 	CustomActionErrors map[string]any `json:"custom_action_errors,omitempty"`
 	ExecTime           float64        `json:"time"` // action execution seconds
 
+	// Email-specific fields, populated when Type == RequestTypeEmail.
+	Sender       string         `json:"sender,omitempty"`
+	MessageID    string         `json:"message_id,omitempty"`
+	Destinations string         `json:"destinations,omitempty"` // comma-separated recipients
+	Subject      string         `json:"subject,omitempty"`
+	TextContent  string         `json:"text_content,omitempty"`
+	Checks       map[string]any `json:"checks,omitempty"` // DKIM/SPF/DMARC/spam results
+
 	Files     []File    `json:"files,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }

@@ -219,6 +219,44 @@ func TestFilteredListCountDelete(t *testing.T) {
 	}
 }
 
+func TestEmailRequestRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	tok := newToken()
+	if err := s.CreateToken(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+
+	req := &models.Request{
+		UUID:         uuid.NewString(),
+		TokenID:      tok.UUID,
+		Type:         models.RequestTypeEmail,
+		Sender:       "alice@example.com",
+		MessageID:    "<abc@example.com>",
+		Destinations: tok.UUID + "@emailhook.site",
+		Subject:      "Hello",
+		Content:      "<p>hi</p>",
+		TextContent:  "hi",
+		Checks:       map[string]any{"dkim": "pass", "spf": "none"},
+	}
+	if err := s.CreateRequest(ctx, req, 0); err != nil {
+		t.Fatalf("CreateRequest(email): %v", err)
+	}
+	got, err := s.GetRequest(ctx, req.UUID)
+	if err != nil {
+		t.Fatalf("GetRequest: %v", err)
+	}
+	if got.Type != models.RequestTypeEmail || got.Sender != "alice@example.com" {
+		t.Errorf("email fields lost: %+v", got)
+	}
+	if got.Subject != "Hello" || got.TextContent != "hi" {
+		t.Errorf("subject/text lost: %+v", got)
+	}
+	if got.Checks["dkim"] != "pass" {
+		t.Errorf("checks lost: %+v", got.Checks)
+	}
+}
+
 func TestListRequestsPaging(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)

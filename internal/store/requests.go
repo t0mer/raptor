@@ -14,7 +14,8 @@ import (
 
 const requestColumns = `uuid, token_id, type, method, ip, country, country_code, region, city,
 	hostname, user_agent, content, query, headers, url, size, sorting,
-	custom_action_output, custom_action_errors, exec_time, created_at`
+	custom_action_output, custom_action_errors, exec_time, created_at,
+	sender, message_id, destinations, subject, text_content, checks`
 
 // CreateRequest stores a captured request and updates the token's
 // latest_request_at. It also enforces the token's request_limit by pruning the
@@ -46,12 +47,17 @@ func (s *Store) CreateRequest(ctx context.Context, r *models.Request, requestLim
 	if err != nil {
 		return fmt.Errorf("marshal custom_action_errors: %w", err)
 	}
+	checks, err := marshalJSON(r.Checks)
+	if err != nil {
+		return fmt.Errorf("marshal checks: %w", err)
+	}
 
 	_, err = s.db.ExecContext(ctx, `INSERT INTO requests (`+requestColumns+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.UUID, r.TokenID, r.Type, r.Method, r.IP, r.Country, r.CountryCode, r.Region, r.City,
 		r.Hostname, r.UserAgent, r.Content, query, headers, r.URL, r.Size, r.Sorting,
 		caOut, caErr, r.ExecTime, nowRFC3339(r.CreatedAt),
+		r.Sender, r.MessageID, r.Destinations, r.Subject, r.TextContent, checks,
 	)
 	if err != nil {
 		return fmt.Errorf("insert request: %w", err)
@@ -187,11 +193,13 @@ func scanRequest(sc scanner) (*models.Request, error) {
 		query, headers string
 		caOut, caErr   string
 		created        string
+		checks         string
 	)
 	err := sc.Scan(
 		&r.UUID, &r.TokenID, &r.Type, &r.Method, &r.IP, &r.Country, &r.CountryCode, &r.Region, &r.City,
 		&r.Hostname, &r.UserAgent, &r.Content, &query, &headers, &r.URL, &r.Size, &r.Sorting,
 		&caOut, &caErr, &r.ExecTime, &created,
+		&r.Sender, &r.MessageID, &r.Destinations, &r.Subject, &r.TextContent, &checks,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -209,6 +217,9 @@ func scanRequest(sc scanner) (*models.Request, error) {
 		return nil, err
 	}
 	if err := unmarshalJSON(caErr, &r.CustomActionErrors); err != nil {
+		return nil, err
+	}
+	if err := unmarshalJSON(checks, &r.Checks); err != nil {
 		return nil, err
 	}
 	if r.CreatedAt, err = parseTime(created); err != nil {
