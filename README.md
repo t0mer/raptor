@@ -31,6 +31,12 @@ single static binary with an embedded UI.
 | --- | --- |
 | ![Custom Actions editor — an ordered chain that runs on every request](assets/screenshots/actions-editor-dark.png) | ![Schedules — cron-driven uptime/keyword/SSL monitoring with alerting](assets/screenshots/schedules-dark.png) |
 
+### Accounts & access control
+
+| Sign in | Account & users |
+| --- | --- |
+| ![Sign-in / first-run admin bootstrap](assets/screenshots/login-dark.png) | ![Account view — API keys and user administration](assets/screenshots/account-dark.png) |
+
 ### Mobile (responsive)
 
 | Light | Dark |
@@ -136,6 +142,19 @@ before saving.
   endpoint (`POST /requests/{id}/response`) — letting a local process handle the
   request and return a dynamic response.
 
+### Accounts & access control
+
+- **Optional authentication** — run open (the default) or gate the whole
+  management API with `--require-auth`. On first run a setup screen creates the
+  initial **admin**; you can also seed one from the environment
+  (`RAPTOR_ADMIN_EMAIL` / `RAPTOR_ADMIN_PASSWORD`) or reset one from the CLI
+  (`--reset-password`).
+- **Multi-user & roles** — admins manage users (admin/user roles) from the
+  Account screen. Passwords are bcrypt-hashed.
+- **Sessions & API keys** — the UI authenticates with a secure session cookie;
+  API clients use `Api-Key: <key>` (keys are shown once and stored only as a
+  SHA-256 hash). Basic Auth is also accepted.
+
 ### Platform
 
 - **Modern UI** — React + TypeScript SPA embedded in the binary, system-aware
@@ -213,7 +232,10 @@ It appears in the inbox instantly.
 | `--max-requests` | `RAPTOR_MAX_REQUESTS` | `0` | Per-URL stored-request cap (`0` = unlimited) |
 | `--geoip-db` | `RAPTOR_GEOIP_DB` | — | Optional MaxMind GeoLite2 DB for request geo |
 | `--log-level` | `RAPTOR_LOG_LEVEL` | `info` | `debug` \| `info` \| `warning` \| `error` |
-| `--require-auth` | `RAPTOR_REQUIRE_AUTH` | `false` | Gate the management API behind an API key |
+| `--require-auth` | `RAPTOR_REQUIRE_AUTH` | `false` | Require authentication for the management API |
+| `--reset-password` | — | — | Interactively set an admin password and exit |
+| — | `RAPTOR_ADMIN_EMAIL` | — | Seed an initial admin email on first run |
+| — | `RAPTOR_ADMIN_PASSWORD` | — | Seed the initial admin password on first run |
 | `--action-allow` | `RAPTOR_ACTION_ALLOW` | — | Comma-separated allow-list of hosts for outbound requests |
 | `--action-deny` | `RAPTOR_ACTION_DENY` | — | Comma-separated deny-list of hosts for outbound requests |
 | `--action-allow-internal` | `RAPTOR_ACTION_ALLOW_INTERNAL` | `false` | Permit outbound requests to reach internal/loopback hosts |
@@ -254,9 +276,16 @@ Key endpoints:
 | `PUT` `DELETE` | `/api/v1/schedules/{id}` | Update / delete a schedule |
 | `POST` | `/api/v1/schedules/{id}/run` | Run a schedule now |
 | `GET` | `/api/v1/schedules/{id}/runs` | Schedule run history |
+| `GET` | `/api/v1/auth/status` | Auth/bootstrap status + current user |
+| `POST` | `/api/v1/auth/bootstrap` | Create the first admin (first run only) |
+| `POST` | `/api/v1/auth/login` `/logout` | Start / end a session |
+| `GET` `POST` `DELETE` | `/api/v1/account/api-keys` | Manage your API keys |
+| `GET` `POST` | `/api/v1/users` | List / create users (admin) |
+| `PUT` `DELETE` | `/api/v1/users/{id}` | Update / delete a user (admin) |
 
-When `--require-auth` is set, send `Api-Key: <uuid>`. With no key configured the
-API is open (documented first-run bootstrap mode).
+**Authentication.** With `--require-auth` off the API is open. With it on, the
+API is open only until the first admin exists (first-run bootstrap), then
+requires a session cookie, an `Api-Key: <key>` header, or Basic Auth.
 
 ## Development
 
