@@ -144,16 +144,24 @@ before saving.
 
 ### Accounts & access control
 
-- **Optional authentication** — run open (the default) or gate the whole
-  management API with `--require-auth`. On first run a setup screen creates the
-  initial **admin**; you can also seed one from the environment
-  (`RAPTOR_ADMIN_EMAIL` / `RAPTOR_ADMIN_PASSWORD`) or reset one from the CLI
-  (`--reset-password`).
+- **Anonymous by default** — like webhook.site, every visitor automatically gets
+  their own identity (a cookie) and their own URLs, with no login required. On a
+  first visit a URL is auto-created. Visitors only see and manage their own URLs;
+  the capture endpoints stay public so anyone can deliver to a URL.
+- **Optional login & registration** — visitors can register an account (their
+  anonymous URLs migrate to it) and sign in from any browser. Registration is
+  toggleable with `--allow-registration` / `RAPTOR_ALLOW_REGISTRATION`: turn it
+  off to lock signups while still allowing existing users to log in. The first
+  account is always allowed and becomes **admin**; an admin can also be seeded
+  from the environment (`RAPTOR_ADMIN_EMAIL` / `RAPTOR_ADMIN_PASSWORD`) or reset
+  from the CLI (`--reset-password`).
+- **Private mode** — set `--require-auth` to drop anonymous access entirely and
+  require login for the whole management API.
 - **Multi-user & roles** — admins manage users (admin/user roles) from the
-  Account screen. Passwords are bcrypt-hashed.
-- **Sessions & API keys** — the UI authenticates with a secure session cookie;
-  API clients use `Api-Key: <key>` (keys are shown once and stored only as a
-  SHA-256 hash). Basic Auth is also accepted.
+  Account screen and see all URLs. Passwords are bcrypt-hashed.
+- **Sessions & API keys** — the UI authenticates with a secure session cookie
+  (id hashed at rest); API clients use `Api-Key: <key>` (keys are shown once and
+  stored only as a SHA-256 hash). Basic Auth is also accepted.
 
 ### Platform
 
@@ -232,7 +240,8 @@ It appears in the inbox instantly.
 | `--max-requests` | `RAPTOR_MAX_REQUESTS` | `0` | Per-URL stored-request cap (`0` = unlimited) |
 | `--geoip-db` | `RAPTOR_GEOIP_DB` | — | Optional MaxMind GeoLite2 DB for request geo |
 | `--log-level` | `RAPTOR_LOG_LEVEL` | `info` | `debug` \| `info` \| `warning` \| `error` |
-| `--require-auth` | `RAPTOR_REQUIRE_AUTH` | `false` | Require authentication for the management API |
+| `--require-auth` | `RAPTOR_REQUIRE_AUTH` | `false` | Require login for the management API (no anonymous access) |
+| `--allow-registration` | `RAPTOR_ALLOW_REGISTRATION` | `true` | Allow new users to self-register |
 | `--reset-password` | — | — | Interactively set an admin password and exit |
 | — | `RAPTOR_ADMIN_EMAIL` | — | Seed an initial admin email on first run |
 | — | `RAPTOR_ADMIN_PASSWORD` | — | Seed the initial admin password on first run |
@@ -276,16 +285,18 @@ Key endpoints:
 | `PUT` `DELETE` | `/api/v1/schedules/{id}` | Update / delete a schedule |
 | `POST` | `/api/v1/schedules/{id}/run` | Run a schedule now |
 | `GET` | `/api/v1/schedules/{id}/runs` | Schedule run history |
-| `GET` | `/api/v1/auth/status` | Auth/bootstrap status + current user |
-| `POST` | `/api/v1/auth/bootstrap` | Create the first admin (first run only) |
+| `GET` | `/api/v1/auth/status` | Auth status, registration toggle + current user |
+| `POST` | `/api/v1/auth/register` | Register an account (first one becomes admin) |
 | `POST` | `/api/v1/auth/login` `/logout` | Start / end a session |
 | `GET` `POST` `DELETE` | `/api/v1/account/api-keys` | Manage your API keys |
 | `GET` `POST` | `/api/v1/users` | List / create users (admin) |
 | `PUT` `DELETE` | `/api/v1/users/{id}` | Update / delete a user (admin) |
 
-**Authentication.** With `--require-auth` off the API is open. With it on, the
-API is open only until the first admin exists (first-run bootstrap), then
-requires a session cookie, an `Api-Key: <key>` header, or Basic Auth.
+**Authentication.** By default the API is anonymous-by-default: each caller is
+identified by a session cookie (logged-in), an `Api-Key: <key>` header, or an
+auto-issued anonymous owner cookie — and only sees their own URLs. With
+`--require-auth`, anonymous access is dropped and a session, API key or Basic
+Auth is required for everything except login/registration.
 
 ## Development
 
