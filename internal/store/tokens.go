@@ -25,7 +25,7 @@ func (s *Store) CreateToken(ctx context.Context, t *models.Token) error {
 	}
 	t.UpdatedAt = now
 
-	_, err := s.db.ExecContext(ctx, `INSERT INTO tokens (`+tokenColumns+`)
+	_, err := s.exec(ctx, `INSERT INTO tokens (`+tokenColumns+`)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		t.UUID, t.UserID, t.Alias, t.DefaultStatus, t.DefaultContent, t.DefaultContentType,
 		t.Timeout, boolToInt(t.CORS), t.Expiry, boolToInt(t.Actions), t.RequestLimit,
@@ -40,7 +40,7 @@ func (s *Store) CreateToken(ctx context.Context, t *models.Token) error {
 
 // GetToken returns the token with the given UUID.
 func (s *Store) GetToken(ctx context.Context, uuid string) (*models.Token, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT `+tokenColumns+` FROM tokens WHERE uuid = ?`, uuid)
+	row := s.queryRow(ctx, `SELECT `+tokenColumns+` FROM tokens WHERE uuid = ?`, uuid)
 	return scanToken(row)
 }
 
@@ -49,7 +49,7 @@ func (s *Store) GetTokenByAlias(ctx context.Context, alias string) (*models.Toke
 	if alias == "" {
 		return nil, ErrNotFound
 	}
-	row := s.db.QueryRowContext(ctx, `SELECT `+tokenColumns+` FROM tokens WHERE alias = ?`, alias)
+	row := s.queryRow(ctx, `SELECT `+tokenColumns+` FROM tokens WHERE alias = ?`, alias)
 	return scanToken(row)
 }
 
@@ -65,7 +65,7 @@ func (s *Store) ListTokensForUser(ctx context.Context, userID string) ([]*models
 }
 
 func (s *Store) queryTokens(ctx context.Context, query string, args ...any) ([]*models.Token, error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query tokens: %w", err)
 	}
@@ -85,7 +85,7 @@ func (s *Store) queryTokens(ctx context.Context, query string, args ...any) ([]*
 // UpdateToken persists mutable token fields and bumps UpdatedAt.
 func (s *Store) UpdateToken(ctx context.Context, t *models.Token) error {
 	t.UpdatedAt = time.Now().UTC()
-	res, err := s.db.ExecContext(ctx, `UPDATE tokens SET
+	res, err := s.exec(ctx, `UPDATE tokens SET
 		alias=?, default_status=?, default_content=?, default_content_type=?,
 		timeout=?, cors=?, expiry=?, actions=?, request_limit=?, description=?,
 		listen=?, redirect=?, password=?, group_id=?, premium=?, updated_at=?
@@ -108,7 +108,7 @@ func (s *Store) ReassignTokens(ctx context.Context, fromOwner, toOwner string) (
 	if fromOwner == "" || fromOwner == toOwner {
 		return 0, nil
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE tokens SET user_id = ? WHERE user_id = ?`, toOwner, fromOwner)
+	res, err := s.exec(ctx, `UPDATE tokens SET user_id = ? WHERE user_id = ?`, toOwner, fromOwner)
 	if err != nil {
 		return 0, fmt.Errorf("reassign tokens: %w", err)
 	}
@@ -117,7 +117,7 @@ func (s *Store) ReassignTokens(ctx context.Context, fromOwner, toOwner string) (
 
 // DeleteToken removes a token and (via cascade) its requests and files.
 func (s *Store) DeleteToken(ctx context.Context, uuid string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM tokens WHERE uuid = ?`, uuid)
+	res, err := s.exec(ctx, `DELETE FROM tokens WHERE uuid = ?`, uuid)
 	if err != nil {
 		return fmt.Errorf("delete token: %w", err)
 	}
@@ -126,7 +126,7 @@ func (s *Store) DeleteToken(ctx context.Context, uuid string) error {
 
 // touchToken updates latest_request_at to the given time.
 func (s *Store) touchToken(ctx context.Context, uuid string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.exec(ctx,
 		`UPDATE tokens SET latest_request_at = ? WHERE uuid = ?`, nowRFC3339(at), uuid)
 	return err
 }

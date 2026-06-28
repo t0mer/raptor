@@ -24,7 +24,7 @@ func (s *Store) CreateSchedule(ctx context.Context, sc *models.Schedule) error {
 	if err != nil {
 		return fmt.Errorf("encrypt notify url: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO schedules (`+scheduleColumns+`)
+	_, err = s.exec(ctx, `INSERT INTO schedules (`+scheduleColumns+`)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		sc.UUID, sc.TokenID, sc.Name, sc.Cron, sc.TargetURL, sc.Method, sc.Body, boolToInt(sc.RunActions),
 		sc.ExpectStatus, sc.Keyword, boolToInt(sc.CheckSSL), sc.SSLDays, notify, boolToInt(sc.Enabled),
@@ -39,7 +39,7 @@ func (s *Store) CreateSchedule(ctx context.Context, sc *models.Schedule) error {
 
 // GetSchedule returns a schedule by id (notify URL decrypted).
 func (s *Store) GetSchedule(ctx context.Context, uuid string) (*models.Schedule, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT `+scheduleColumns+` FROM schedules WHERE uuid = ?`, uuid)
+	row := s.queryRow(ctx, `SELECT `+scheduleColumns+` FROM schedules WHERE uuid = ?`, uuid)
 	return s.scanSchedule(row)
 }
 
@@ -54,7 +54,7 @@ func (s *Store) ListEnabledSchedules(ctx context.Context) ([]*models.Schedule, e
 }
 
 func (s *Store) querySchedules(ctx context.Context, query string, args ...any) ([]*models.Schedule, error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query schedules: %w", err)
 	}
@@ -77,7 +77,7 @@ func (s *Store) UpdateSchedule(ctx context.Context, sc *models.Schedule) error {
 	if err != nil {
 		return fmt.Errorf("encrypt notify url: %w", err)
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE schedules SET
+	res, err := s.exec(ctx, `UPDATE schedules SET
 		token_id=?, name=?, cron=?, target_url=?, method=?, body=?, run_actions=?,
 		expect_status=?, keyword=?, check_ssl=?, ssl_days=?, notify_url=?, enabled=?, updated_at=?
 		WHERE uuid=?`,
@@ -93,7 +93,7 @@ func (s *Store) UpdateSchedule(ctx context.Context, sc *models.Schedule) error {
 
 // DeleteSchedule removes a schedule and its run history.
 func (s *Store) DeleteSchedule(ctx context.Context, uuid string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM schedules WHERE uuid = ?`, uuid)
+	res, err := s.exec(ctx, `DELETE FROM schedules WHERE uuid = ?`, uuid)
 	if err != nil {
 		return fmt.Errorf("delete schedule: %w", err)
 	}
@@ -102,7 +102,7 @@ func (s *Store) DeleteSchedule(ctx context.Context, uuid string) error {
 
 // RecordScheduleResult updates a schedule's last/next run and status.
 func (s *Store) RecordScheduleResult(ctx context.Context, uuid string, lastRun, nextRun time.Time, status, message string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE schedules SET
+	_, err := s.exec(ctx, `UPDATE schedules SET
 		last_run=?, next_run=?, last_status=?, last_message=? WHERE uuid=?`,
 		nowRFC3339(lastRun), nowRFC3339(nextRun), status, message, uuid)
 	return err
@@ -113,7 +113,7 @@ func (s *Store) CreateScheduleRun(ctx context.Context, r *models.ScheduleRun) er
 	if r.CreatedAt.IsZero() {
 		r.CreatedAt = time.Now().UTC()
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.exec(ctx,
 		`INSERT INTO schedule_runs (id, schedule_id, status, status_code, message, duration_ms, created_at)
 		 VALUES (?,?,?,?,?,?,?)`,
 		r.ID, r.ScheduleID, r.Status, r.StatusCode, r.Message, r.DurationMS, nowRFC3339(r.CreatedAt))
@@ -125,7 +125,7 @@ func (s *Store) ListScheduleRuns(ctx context.Context, scheduleID string, limit i
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.query(ctx,
 		`SELECT id, schedule_id, status, status_code, message, duration_ms, created_at
 		 FROM schedule_runs WHERE schedule_id = ? ORDER BY created_at DESC LIMIT ?`, scheduleID, limit)
 	if err != nil {

@@ -21,7 +21,7 @@ func (s *Store) CreateUser(ctx context.Context, u *models.User) error {
 	if u.Role == "" {
 		u.Role = models.RoleUser
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.exec(ctx,
 		`INSERT INTO users (id, email, password_hash, role, created_at, updated_at) VALUES (?,?,?,?,?,?)`,
 		u.ID, u.Email, u.PasswordHash, u.Role, nowRFC3339(u.CreatedAt), nowRFC3339(u.UpdatedAt))
 	if err != nil {
@@ -32,19 +32,21 @@ func (s *Store) CreateUser(ctx context.Context, u *models.User) error {
 
 // GetUser returns a user by id.
 func (s *Store) GetUser(ctx context.Context, id string) (*models.User, error) {
-	return scanUser(s.db.QueryRowContext(ctx,
+	return scanUser(s.queryRow(ctx,
 		`SELECT id, email, password_hash, role, created_at, updated_at FROM users WHERE id = ?`, id))
 }
 
 // GetUserByEmail returns a user by (case-insensitive) email.
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
-	return scanUser(s.db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, role, created_at, updated_at FROM users WHERE email = ? COLLATE NOCASE`, email))
+	// LOWER() gives portable case-insensitive matching across all three drivers
+	// (sqlite/postgres/mysql), independent of each column's default collation.
+	return scanUser(s.queryRow(ctx,
+		`SELECT id, email, password_hash, role, created_at, updated_at FROM users WHERE LOWER(email) = LOWER(?)`, email))
 }
 
 // ListUsers returns all users, oldest first.
 func (s *Store) ListUsers(ctx context.Context) ([]*models.User, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.query(ctx,
 		`SELECT id, email, password_hash, role, created_at, updated_at FROM users ORDER BY created_at ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("query users: %w", err)
@@ -64,14 +66,14 @@ func (s *Store) ListUsers(ctx context.Context) ([]*models.User, error) {
 // CountUsers returns the number of users (drives bootstrap mode).
 func (s *Store) CountUsers(ctx context.Context) (int, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&n)
+	err := s.queryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&n)
 	return n, err
 }
 
 // UpdateUser persists email, password hash and role.
 func (s *Store) UpdateUser(ctx context.Context, u *models.User) error {
 	u.UpdatedAt = time.Now().UTC()
-	res, err := s.db.ExecContext(ctx,
+	res, err := s.exec(ctx,
 		`UPDATE users SET email=?, password_hash=?, role=?, updated_at=? WHERE id=?`,
 		u.Email, u.PasswordHash, u.Role, nowRFC3339(u.UpdatedAt), u.ID)
 	if err != nil {
@@ -82,7 +84,7 @@ func (s *Store) UpdateUser(ctx context.Context, u *models.User) error {
 
 // DeleteUser removes a user (cascading to their keys and sessions).
 func (s *Store) DeleteUser(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id)
+	res, err := s.exec(ctx, `DELETE FROM users WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
@@ -109,7 +111,7 @@ func (s *Store) CreateAPIKey(ctx context.Context, k *models.APIKey) error {
 	if k.CreatedAt.IsZero() {
 		k.CreatedAt = time.Now().UTC()
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.exec(ctx,
 		`INSERT INTO api_keys (id, user_id, name, key_hash, last_used_at, created_at) VALUES (?,?,?,?,?,?)`,
 		k.ID, k.UserID, k.Name, k.KeyHash, nullTime(k.LastUsedAt), nowRFC3339(k.CreatedAt))
 	if err != nil {
@@ -120,19 +122,19 @@ func (s *Store) CreateAPIKey(ctx context.Context, k *models.APIKey) error {
 
 // GetAPIKeyByHash looks up an API key by its SHA-256 hash.
 func (s *Store) GetAPIKeyByHash(ctx context.Context, hash string) (*models.APIKey, error) {
-	return scanAPIKey(s.db.QueryRowContext(ctx,
+	return scanAPIKey(s.queryRow(ctx,
 		`SELECT id, user_id, name, key_hash, last_used_at, created_at FROM api_keys WHERE key_hash = ?`, hash))
 }
 
 // GetAPIKey looks up an API key by id.
 func (s *Store) GetAPIKey(ctx context.Context, id string) (*models.APIKey, error) {
-	return scanAPIKey(s.db.QueryRowContext(ctx,
+	return scanAPIKey(s.queryRow(ctx,
 		`SELECT id, user_id, name, key_hash, last_used_at, created_at FROM api_keys WHERE id = ?`, id))
 }
 
 // ListAPIKeys returns a user's API keys, newest first.
 func (s *Store) ListAPIKeys(ctx context.Context, userID string) ([]*models.APIKey, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.query(ctx,
 		`SELECT id, user_id, name, key_hash, last_used_at, created_at FROM api_keys WHERE user_id = ? ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("query api keys: %w", err)
@@ -151,7 +153,7 @@ func (s *Store) ListAPIKeys(ctx context.Context, userID string) ([]*models.APIKe
 
 // DeleteAPIKey removes an API key.
 func (s *Store) DeleteAPIKey(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM api_keys WHERE id = ?`, id)
+	res, err := s.exec(ctx, `DELETE FROM api_keys WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete api key: %w", err)
 	}
@@ -160,7 +162,7 @@ func (s *Store) DeleteAPIKey(ctx context.Context, id string) error {
 
 // TouchAPIKey records the last-used time of an API key (best-effort).
 func (s *Store) TouchAPIKey(ctx context.Context, id string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at = ? WHERE id = ?`, nowRFC3339(at), id)
+	_, err := s.exec(ctx, `UPDATE api_keys SET last_used_at = ? WHERE id = ?`, nowRFC3339(at), id)
 	return err
 }
 
@@ -189,7 +191,7 @@ func (s *Store) CreateSession(ctx context.Context, sess *models.Session) error {
 	if sess.CreatedAt.IsZero() {
 		sess.CreatedAt = time.Now().UTC()
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.exec(ctx,
 		`INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?,?,?,?)`,
 		sess.ID, sess.UserID, nowRFC3339(sess.ExpiresAt), nowRFC3339(sess.CreatedAt))
 	if err != nil {
@@ -204,7 +206,7 @@ func (s *Store) GetSession(ctx context.Context, id string) (*models.Session, err
 		sess             models.Session
 		expires, created string
 	)
-	err := s.db.QueryRowContext(ctx,
+	err := s.queryRow(ctx,
 		`SELECT id, user_id, expires_at, created_at FROM sessions WHERE id = ?`, id).
 		Scan(&sess.ID, &sess.UserID, &expires, &created)
 	if err != nil {
@@ -217,12 +219,12 @@ func (s *Store) GetSession(ctx context.Context, id string) (*models.Session, err
 
 // DeleteSession removes a session (logout).
 func (s *Store) DeleteSession(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id)
+	_, err := s.exec(ctx, `DELETE FROM sessions WHERE id = ?`, id)
 	return err
 }
 
 // DeleteExpiredSessions purges sessions past their expiry.
 func (s *Store) DeleteExpiredSessions(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at < ?`, nowRFC3339(time.Now().UTC()))
+	_, err := s.exec(ctx, `DELETE FROM sessions WHERE expires_at < ?`, nowRFC3339(time.Now().UTC()))
 	return err
 }

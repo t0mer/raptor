@@ -52,7 +52,7 @@ func (s *Store) CreateRequest(ctx context.Context, r *models.Request, requestLim
 		return fmt.Errorf("marshal checks: %w", err)
 	}
 
-	_, err = s.db.ExecContext(ctx, `INSERT INTO requests (`+requestColumns+`)
+	_, err = s.exec(ctx, `INSERT INTO requests (`+requestColumns+`)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.UUID, r.TokenID, r.Type, r.Method, r.IP, r.Country, r.CountryCode, r.Region, r.City,
 		r.Hostname, r.UserAgent, r.Content, query, headers, r.URL, r.Size, r.Sorting,
@@ -76,7 +76,7 @@ func (s *Store) CreateRequest(ctx context.Context, r *models.Request, requestLim
 
 // GetRequest returns a single request (without attached files).
 func (s *Store) GetRequest(ctx context.Context, uuid string) (*models.Request, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT `+requestColumns+` FROM requests WHERE uuid = ?`, uuid)
+	row := s.queryRow(ctx, `SELECT `+requestColumns+` FROM requests WHERE uuid = ?`, uuid)
 	return scanRequest(row)
 }
 
@@ -99,7 +99,7 @@ func (s *Store) ListRequestsWhere(ctx context.Context, tokenID, where string, wh
 	clause, args := composeWhere(tokenID, where, whereArgs)
 	args = append(args, limit, offset)
 
-	rows, err := s.db.QueryContext(ctx, `SELECT `+requestColumns+`
+	rows, err := s.query(ctx, `SELECT `+requestColumns+`
 		FROM requests WHERE `+clause+` ORDER BY sorting DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query requests: %w", err)
@@ -119,7 +119,7 @@ func (s *Store) ListRequestsWhere(ctx context.Context, tokenID, where string, wh
 
 // LatestRequest returns the most recent request for a token.
 func (s *Store) LatestRequest(ctx context.Context, tokenID string) (*models.Request, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT `+requestColumns+`
+	row := s.queryRow(ctx, `SELECT `+requestColumns+`
 		FROM requests WHERE token_id = ? ORDER BY sorting DESC LIMIT 1`, tokenID)
 	return scanRequest(row)
 }
@@ -133,13 +133,13 @@ func (s *Store) CountRequests(ctx context.Context, tokenID string) (int, error) 
 func (s *Store) CountRequestsWhere(ctx context.Context, tokenID, where string, whereArgs []any) (int, error) {
 	clause, args := composeWhere(tokenID, where, whereArgs)
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM requests WHERE `+clause, args...).Scan(&n)
+	err := s.queryRow(ctx, `SELECT COUNT(*) FROM requests WHERE `+clause, args...).Scan(&n)
 	return n, err
 }
 
 // DeleteRequest removes a single request.
 func (s *Store) DeleteRequest(ctx context.Context, uuid string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM requests WHERE uuid = ?`, uuid)
+	res, err := s.exec(ctx, `DELETE FROM requests WHERE uuid = ?`, uuid)
 	if err != nil {
 		return fmt.Errorf("delete request: %w", err)
 	}
@@ -148,7 +148,7 @@ func (s *Store) DeleteRequest(ctx context.Context, uuid string) error {
 
 // DeleteAllRequests removes every request for a token.
 func (s *Store) DeleteAllRequests(ctx context.Context, tokenID string) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM requests WHERE token_id = ?`, tokenID)
+	res, err := s.exec(ctx, `DELETE FROM requests WHERE token_id = ?`, tokenID)
 	if err != nil {
 		return 0, fmt.Errorf("delete requests: %w", err)
 	}
@@ -160,7 +160,7 @@ func (s *Store) DeleteAllRequests(ctx context.Context, tokenID string) (int64, e
 // deletes all of the token's requests.
 func (s *Store) DeleteRequestsWhere(ctx context.Context, tokenID, where string, whereArgs []any) (int64, error) {
 	clause, args := composeWhere(tokenID, where, whereArgs)
-	res, err := s.db.ExecContext(ctx, `DELETE FROM requests WHERE `+clause, args...)
+	res, err := s.exec(ctx, `DELETE FROM requests WHERE `+clause, args...)
 	if err != nil {
 		return 0, fmt.Errorf("delete requests subset: %w", err)
 	}
@@ -179,10 +179,15 @@ func composeWhere(tokenID, where string, whereArgs []any) (string, []any) {
 	return clause, args
 }
 
-// pruneRequests keeps only the newest `keep` requests for a token.
+// pruneRequests keeps only the newest `keep` requests for a token. The inner
+// SELECT is wrapped in a derived table ("... ) AS keep_set") because MySQL does
+// not allow LIMIT directly inside an IN (SELECT ...) subquery; the extra nesting
+// is accepted by sqlite and postgres too.
 func (s *Store) pruneRequests(ctx context.Context, tokenID string, keep int) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM requests WHERE token_id = ? AND uuid NOT IN (
-		SELECT uuid FROM requests WHERE token_id = ? ORDER BY sorting DESC LIMIT ?
+	_, err := s.exec(ctx, `DELETE FROM requests WHERE token_id = ? AND uuid NOT IN (
+		SELECT uuid FROM (
+			SELECT uuid FROM requests WHERE token_id = ? ORDER BY sorting DESC LIMIT ?
+		) AS keep_set
 	)`, tokenID, tokenID, keep)
 	return err
 }
