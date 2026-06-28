@@ -33,9 +33,12 @@ single static binary with an embedded UI.
 
 ### Accounts & access control
 
-| Sign in | Account & users |
-| --- | --- |
-| ![Sign-in / first-run admin bootstrap](assets/screenshots/login-dark.png) | ![Account view — API keys and user administration](assets/screenshots/account-dark.png) |
+Anonymous-by-default: a first visit gives you your own URL with no login; sign in
+or register to keep your URLs across browsers.
+
+| Anonymous first visit | Sign in / register | Account & users |
+| --- | --- | --- |
+| ![First visit auto-creates a URL, no login needed](assets/screenshots/anon-firstvisit-dark.png) | ![Sign in or register modal](assets/screenshots/signin-modal-dark.png) | ![Account view — API keys and user administration](assets/screenshots/account-dark.png) |
 
 ### Mobile (responsive)
 
@@ -196,15 +199,29 @@ before saving.
 
 ```bash
 docker compose up --build
-# UI + API + capture: http://localhost:8084
+# UI + API + capture: http://localhost:8084  (email :2525, DNS :5354/udp)
 ```
+
+The compose file documents the optional environment variables (accounts,
+email/DNS suffixes, action SSRF policy) as comments — uncomment what you need.
 
 ### Docker
 
+Use a **named volume** for `/data` (not a host bind mount: the image runs as a
+non-root user, and a root-owned bind-mounted directory isn't writable). `/data`
+holds the SQLite database **and** the generated AES key (`secret.key`), so keep it.
+
 ```bash
-docker run -p 8084:8084 -v "$PWD/data:/data" \
-  -e RAPTOR_BASE_URL=http://localhost:8084 techblog/raptor:latest
+docker volume create raptor-data
+docker run -p 8084:8084 -p 2525:2525 -p 5354:5354/udp \
+  -v raptor-data:/data \
+  -e RAPTOR_BASE_URL=http://localhost:8084 \
+  techblog/raptor:latest
 ```
+
+Images are published multi-arch (`linux/amd64,arm64,arm/v7`) to
+`techblog/raptor`. See [CLI flags](#cli-flags) for the full set of `--flag` /
+`RAPTOR_*` options (auth, registration toggle, admin seeding, SSRF policy, …).
 
 ### From source
 
@@ -214,8 +231,8 @@ go build -o raptor ./cmd/raptor
 ./raptor --base-url http://localhost:8084 --data ./data
 ```
 
-Then open <http://localhost:8084>, click **New URL**, and send a request to the
-generated address:
+Then open <http://localhost:8084> — by default you immediately get **your own
+URL** (no login needed). Send a request to it:
 
 ```bash
 curl -X POST http://localhost:8084/<token>/demo \
@@ -223,6 +240,21 @@ curl -X POST http://localhost:8084/<token>/demo \
 ```
 
 It appears in the inbox instantly.
+
+### Running privately (accounts)
+
+By default Raptor is anonymous-by-default with open registration. For a private,
+account-gated instance, seed an admin and require login:
+
+```bash
+docker run -p 8084:8084 -v raptor-data:/data \
+  -e RAPTOR_BASE_URL=https://hooks.example.com \
+  -e RAPTOR_REQUIRE_AUTH=true \
+  -e RAPTOR_ALLOW_REGISTRATION=false \
+  -e RAPTOR_ADMIN_EMAIL=admin@example.com \
+  -e RAPTOR_ADMIN_PASSWORD=change-me-please \
+  techblog/raptor:latest
+```
 
 ## CLI flags
 
