@@ -6,6 +6,7 @@ import "time"
 // records inbound requests and defines the default response returned to callers.
 type Token struct {
 	UUID               string     `json:"uuid"`
+	UserID             string     `json:"user_id,omitempty"` // owner; empty for open-mode tokens
 	Alias              string     `json:"alias,omitempty"`
 	DefaultStatus      int        `json:"default_status"`
 	DefaultContent     string     `json:"default_content"`

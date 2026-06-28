@@ -13,7 +13,7 @@ import (
 // ErrNotFound is returned when a requested row does not exist.
 var ErrNotFound = errors.New("not found")
 
-const tokenColumns = `uuid, alias, default_status, default_content, default_content_type,
+const tokenColumns = `uuid, user_id, alias, default_status, default_content, default_content_type,
 	timeout, cors, expiry, actions, request_limit, description, listen, redirect,
 	password, group_id, premium, created_at, updated_at, latest_request_at`
 
@@ -26,8 +26,8 @@ func (s *Store) CreateToken(ctx context.Context, t *models.Token) error {
 	t.UpdatedAt = now
 
 	_, err := s.db.ExecContext(ctx, `INSERT INTO tokens (`+tokenColumns+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		t.UUID, t.Alias, t.DefaultStatus, t.DefaultContent, t.DefaultContentType,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		t.UUID, t.UserID, t.Alias, t.DefaultStatus, t.DefaultContent, t.DefaultContentType,
 		t.Timeout, boolToInt(t.CORS), t.Expiry, boolToInt(t.Actions), t.RequestLimit,
 		t.Description, t.Listen, t.Redirect, t.Password, t.GroupID, boolToInt(t.Premium),
 		nowRFC3339(t.CreatedAt), nowRFC3339(t.UpdatedAt), nullTime(t.LatestRequestAt),
@@ -55,7 +55,17 @@ func (s *Store) GetTokenByAlias(ctx context.Context, alias string) (*models.Toke
 
 // ListTokens returns all tokens, most recently created first.
 func (s *Store) ListTokens(ctx context.Context) ([]*models.Token, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+tokenColumns+` FROM tokens ORDER BY created_at DESC`)
+	return s.queryTokens(ctx, `SELECT `+tokenColumns+` FROM tokens ORDER BY created_at DESC`)
+}
+
+// ListTokensForUser returns only the tokens owned by the given user.
+func (s *Store) ListTokensForUser(ctx context.Context, userID string) ([]*models.Token, error) {
+	return s.queryTokens(ctx,
+		`SELECT `+tokenColumns+` FROM tokens WHERE user_id = ? ORDER BY created_at DESC`, userID)
+}
+
+func (s *Store) queryTokens(ctx context.Context, query string, args ...any) ([]*models.Token, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query tokens: %w", err)
 	}
@@ -123,7 +133,7 @@ func scanToken(sc scanner) (*models.Token, error) {
 		latestNS sql.NullString
 	)
 	err := sc.Scan(
-		&t.UUID, &t.Alias, &t.DefaultStatus, &t.DefaultContent, &t.DefaultContentType,
+		&t.UUID, &t.UserID, &t.Alias, &t.DefaultStatus, &t.DefaultContent, &t.DefaultContentType,
 		&t.Timeout, &cors, &t.Expiry, &actions, &t.RequestLimit, &t.Description,
 		&t.Listen, &t.Redirect, &t.Password, &t.GroupID, &premium,
 		&created, &updated, &latestNS,
