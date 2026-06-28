@@ -101,6 +101,20 @@ func (s *Store) UpdateToken(ctx context.Context, t *models.Token) error {
 	return requireAffected(res)
 }
 
+// ReassignTokens transfers ownership of all tokens from one owner id to another
+// (used to migrate an anonymous visitor's URLs onto their new account). Returns
+// the number reassigned.
+func (s *Store) ReassignTokens(ctx context.Context, fromOwner, toOwner string) (int64, error) {
+	if fromOwner == "" || fromOwner == toOwner {
+		return 0, nil
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE tokens SET user_id = ? WHERE user_id = ?`, toOwner, fromOwner)
+	if err != nil {
+		return 0, fmt.Errorf("reassign tokens: %w", err)
+	}
+	return res.RowsAffected()
+}
+
 // DeleteToken removes a token and (via cascade) its requests and files.
 func (s *Store) DeleteToken(ctx context.Context, uuid string) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM tokens WHERE uuid = ?`, uuid)
