@@ -31,10 +31,14 @@ func NewService(st *store.Store) *Service {
 }
 
 // Bootstrapped reports whether any user exists. Until the first user is created,
-// the API stays open so an initial admin can be provisioned.
+// the API stays open so an initial admin can be provisioned. On a database error
+// it fails closed (reports true) so a transient failure cannot drop the gate.
 func (s *Service) Bootstrapped(ctx context.Context) bool {
 	n, err := s.store.CountUsers(ctx)
-	return err == nil && n > 0
+	if err != nil {
+		return true
+	}
+	return n > 0
 }
 
 // CreateUser creates a user with a hashed password.
@@ -86,32 +90,36 @@ func (s *Service) Login(ctx context.Context, email, password string) (*models.Us
 	return u, nil
 }
 
-// StartSession creates a session for a user and returns it.
+// StartSession creates a session for a user and returns a Session whose ID is
+// the plaintext cookie value. Only the SHA-256 hash of the id is persisted, so a
+// database leak does not expose live session tokens.
 func (s *Service) StartSession(ctx context.Context, userID string) (*models.Session, error) {
 	id, err := GenerateToken(32)
 	if err != nil {
 		return nil, err
 	}
-	sess := &models.Session{ID: id, UserID: userID, ExpiresAt: s.now().UTC().Add(s.sessionTTL)}
-	if err := s.store.CreateSession(ctx, sess); err != nil {
+	expires := s.now().UTC().Add(s.sessionTTL)
+	stored := &models.Session{ID: HashAPIKey(id), UserID: userID, ExpiresAt: expires}
+	if err := s.store.CreateSession(ctx, stored); err != nil {
 		return nil, err
 	}
-	return sess, nil
+	return &models.Session{ID: id, UserID: userID, ExpiresAt: expires}, nil
 }
 
-// EndSession deletes a session (logout).
-func (s *Service) EndSession(ctx context.Context, id string) error {
-	return s.store.DeleteSession(ctx, id)
+// EndSession deletes a session by its plaintext cookie value (logout).
+func (s *Service) EndSession(ctx context.Context, cookieValue string) error {
+	return s.store.DeleteSession(ctx, HashAPIKey(cookieValue))
 }
 
-// UserBySession resolves a session id to its user, enforcing expiry.
-func (s *Service) UserBySession(ctx context.Context, id string) (*models.User, error) {
-	sess, err := s.store.GetSession(ctx, id)
+// UserBySession resolves a session cookie value to its user, enforcing expiry.
+func (s *Service) UserBySession(ctx context.Context, cookieValue string) (*models.User, error) {
+	hashed := HashAPIKey(cookieValue)
+	sess, err := s.store.GetSession(ctx, hashed)
 	if err != nil {
 		return nil, err
 	}
 	if s.now().UTC().After(sess.ExpiresAt) {
-		_ = s.store.DeleteSession(ctx, id)
+		_ = s.store.DeleteSession(ctx, hashed)
 		return nil, store.ErrNotFound
 	}
 	return s.store.GetUser(ctx, sess.UserID)
