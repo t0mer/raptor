@@ -104,7 +104,13 @@ func ensureOwnerCookie(w http.ResponseWriter, r *http.Request, secure bool) stri
 	if c, err := r.Cookie(OwnerCookie); err == nil && strings.HasPrefix(c.Value, AnonPrefix) {
 		return c.Value
 	}
-	id := newAnonID()
+	tok, err := GenerateToken(24)
+	if err != nil {
+		// Without secure randomness we must not issue a low-entropy identity;
+		// proceed with no owner (the caller will see/own nothing).
+		return ""
+	}
+	id := AnonPrefix + tok
 	http.SetCookie(w, &http.Cookie{
 		Name:     OwnerCookie,
 		Value:    id,
@@ -116,15 +122,6 @@ func ensureOwnerCookie(w http.ResponseWriter, r *http.Request, secure bool) stri
 		Expires:  time.Now().Add(ownerCookieMaxAge * time.Second),
 	})
 	return id
-}
-
-func newAnonID() string {
-	tok, err := GenerateToken(24)
-	if err != nil {
-		// Extremely unlikely; fall back to a time-seeded value.
-		tok = time.Now().UTC().Format("20060102150405.000000000")
-	}
-	return AnonPrefix + tok
 }
 
 // ClearOwnerCookie expires the anonymous owner cookie (after upgrade to an account).

@@ -52,7 +52,9 @@ func (a *API) bootstrap(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	a.completeLogin(w, r, u)
+	if !a.completeLogin(w, r, u) {
+		return
+	}
 	writeJSON(w, http.StatusCreated, u)
 }
 
@@ -84,7 +86,9 @@ func (a *API) register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	a.completeLogin(w, r, u)
+	if !a.completeLogin(w, r, u) {
+		return
+	}
 	writeJSON(w, http.StatusCreated, u)
 }
 
@@ -104,7 +108,9 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "login failed")
 		return
 	}
-	a.completeLogin(w, r, u)
+	if !a.completeLogin(w, r, u) {
+		return
+	}
 	writeJSON(w, http.StatusOK, u)
 }
 
@@ -128,22 +134,23 @@ func (a *API) me(w http.ResponseWriter, r *http.Request) {
 }
 
 // completeLogin migrates any anonymous URLs onto the account, clears the
-// anonymous owner cookie, and starts a session.
-func (a *API) completeLogin(w http.ResponseWriter, r *http.Request, u *models.User) {
+// anonymous owner cookie, and starts a session. It returns false (after writing
+// an error) when something failed, so the caller must not also write a response.
+func (a *API) completeLogin(w http.ResponseWriter, r *http.Request, u *models.User) bool {
 	if c, err := r.Cookie(auth.OwnerCookie); err == nil && strings.HasPrefix(c.Value, auth.AnonPrefix) {
 		if _, err := a.store.ReassignTokens(r.Context(), c.Value, u.ID); err != nil {
-			// Non-fatal: the user is still logged in, just without migration.
 			writeError(w, http.StatusInternalServerError, "failed to migrate URLs")
-			return
+			return false
 		}
 		auth.ClearOwnerCookie(w, a.secureCookies)
 	}
 	sess, err := a.auth.StartSession(r.Context(), u.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to start session")
-		return
+		return false
 	}
 	http.SetCookie(w, a.sessionCookie(sess.ID, int(time.Until(sess.ExpiresAt).Seconds())))
+	return true
 }
 
 func (a *API) sessionCookie(value string, maxAge int) *http.Cookie {
