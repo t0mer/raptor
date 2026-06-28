@@ -1,15 +1,9 @@
 # Raptor
 
 **Self-hosted webhook, email & DNS capture and inspection.** Spin up instant,
-unique URLs that capture, inspect and (in later phases) transform, automate and
-forward inbound HTTP requests, emails and DNS queries — all from a single static
-binary with an embedded UI.
-
-> Raptor is built in reviewable phases. **Phases 1–5 (current)** deliver the core
-> HTTP capture engine, inspection API, a real-time web inbox, request search,
-> groups, a control panel, **inbound email + DNS capture**, a **Custom Actions
-> engine with scripting**, and **cron schedules, replay & CLI forwarding**.
-> Accounts/SSO land in the final phase (see [Roadmap](#roadmap)).
+unique URLs, email addresses and DNS hostnames that capture, inspect, transform,
+automate and forward inbound HTTP requests, emails and DNS queries — all from a
+single static binary with an embedded UI.
 
 ## Screenshots
 
@@ -31,13 +25,11 @@ binary with an embedded UI.
 | --- | --- |
 | ![Captured email with sandboxed HTML body and DKIM/SPF/DMARC results](assets/screenshots/email-detail-dark.png) | ![Captured DNS query detail](assets/screenshots/dns-detail-light.png) |
 
-### Custom Actions
+### Custom Actions & Schedules
 
-![Custom Actions editor — an ordered chain that runs on every request](assets/screenshots/actions-editor-dark.png)
-
-### Schedules & monitoring
-
-![Schedules — cron-driven uptime/keyword/SSL monitoring with alerting](assets/screenshots/schedules-dark.png)
+| Custom Actions | Schedules |
+| --- | --- |
+| ![Custom Actions editor — an ordered chain that runs on every request](assets/screenshots/actions-editor-dark.png) | ![Schedules — cron-driven uptime/keyword/SSL monitoring with alerting](assets/screenshots/schedules-dark.png) |
 
 ### Mobile (responsive)
 
@@ -45,7 +37,9 @@ binary with an embedded UI.
 | --- | --- |
 | ![Mobile, light theme](assets/screenshots/mobile-light.png) | ![Mobile, dark theme](assets/screenshots/mobile-dark.png) |
 
-## Features (Phase 1)
+## Features
+
+### Capture & inspect
 
 - **Instant capture URLs** — every method on any sub-path is recorded:
   `POST /{token}/any/path`, alias URLs, and a `/{token}/{statusCode}` form to
@@ -58,14 +52,8 @@ binary with an embedded UI.
   CORS, and redirect, all editable per URL.
 - **Guardrails** — per-URL `100 ÷ timeout` rpm rate limit, `request_limit`
   ring-buffer, body-size cap and TTL `expiry`.
-- **Modern UI** — React + TypeScript SPA embedded in the binary, system-aware
-  light/dark theme with a persisted toggle, responsive from phone to desktop.
-- **REST API first** — every UI action maps to a documented `/api/v1` endpoint;
-  interactive Swagger UI at `/api/docs`.
-- **Operations** — CSV export of captured requests, Prometheus metrics at
-  `/metrics`, JSON health at `/health`.
 
-### Phase 2 — Request management
+### Organise & manage
 
 - **Search DSL** — filter the inbox with a Lucene-style query: free text matches
   the body, plus `method:POST`, `type:web`, `content:charge`, `ip:`, `host:`,
@@ -78,17 +66,21 @@ binary with an embedded UI.
 - **Control Panel** — manage every URL and group from one table: reassign groups,
   open or delete URLs, and create/delete groups.
 
-### Phase 3 — Email & DNS capture
+### Inbound email capture
 
-- **Inbound email** — an SMTP server captures mail sent to
-  `{token}@{email-domain}`. Messages are MIME-parsed (subject, sender, HTML and
-  plain bodies, **attachments**), and **DKIM/SPF/DMARC** are evaluated and shown
-  as badges. HTML bodies render in a fully sandboxed iframe (no script execution).
-- **Inbound DNS** — a DNS server (UDP+TCP) captures queries for
-  `{token}.{dns-domain}` and any subdomain, recording the query name, type and
-  client IP, and returns a minimal answer.
-- Email and DNS captures share the inbox, search, SSE stream and CSV export with
-  HTTP requests — filter them with `type:email` / `type:dns`.
+- An SMTP server captures mail sent to `{token}@{email-domain}`. Messages are
+  MIME-parsed (subject, sender, HTML and plain bodies, **attachments**), and
+  **DKIM/SPF/DMARC** are evaluated and shown as badges. HTML bodies render in a
+  fully sandboxed iframe (no script execution).
+
+### Inbound DNS capture
+
+- A DNS server (UDP+TCP) captures queries for `{token}.{dns-domain}` and any
+  subdomain, recording the query name, type and client IP, and returns a minimal
+  answer.
+
+Email and DNS captures share the inbox, search, SSE stream and CSV export with
+HTTP requests — filter them with `type:email` / `type:dns`.
 
 #### Exposing email & DNS
 
@@ -102,14 +94,12 @@ forward in front (`25 → 2525`, `53 → 5354`), and point DNS at your host:
 
 Override the suffixes with `--email-domain` / `--dns-domain` to use your own.
 
-### Phase 4 — Custom Actions engine
+### Custom Actions
 
 Enable **Actions** on a URL to run an ordered chain on every captured request.
 Actions share variables (`$name$`, plus `$request.content$`, `$request.method$`,
 `$request.query.x$`, `$request.header.x$`), can gate or stop the chain, extract
 data, call out over HTTP, and build the response.
-
-Action types in this release:
 
 | Type | Purpose |
 | --- | --- |
@@ -127,23 +117,18 @@ Each request stores a per-action **run log** (visible in the detail pane and
 replayable). Test a single action against your latest request from the editor
 before saving.
 
-> **Security.** `http_request` and `script` can reach other hosts. Internal
-> targets (loopback, link-local incl. cloud metadata `169.254.169.254`, and
-> private ranges) are **blocked by default** and the deny-list is enforced against
-> the *resolved* IP and across redirects. Use `--action-allow` / `--action-deny`
-> to scope hosts, or `--action-allow-internal` to permit internal targets.
-> `forward` mode omits `Authorization`/`Cookie` headers so caller secrets are not
-> leaked.
+### Schedules & monitoring
 
-### Phase 5 — Schedules, replay & CLI forwarding
-
-- **Schedules** — run a target URL (or a token's action chain) on a 5-field cron
-  interval, with monitoring/alerting:
+- Run a target URL (or a token's action chain) on a 5-field cron interval, with
+  monitoring/alerting:
   - **status** (expected code or any non-2xx), **keyword** (body must contain a
     string), **uptime** (host reachable), and **SSL** (cert expiring within N days).
   - alerts are delivered via a **Shoutrrr** notify URL (Slack/Discord/Telegram/
     ntfy/Gotify/SMTP/…); each run is recorded with history, and schedules can be
     run on demand.
+
+### Replay & CLI forwarding
+
 - **Replay** — re-deliver a subset of captured requests (selected by the search
   DSL) to a target URL, preserving method, body and headers (credentials stripped).
 - **CLI forwarding (`listen`)** — set a token's `listen` window and a capture is
@@ -151,13 +136,32 @@ before saving.
   endpoint (`POST /requests/{id}/response`) — letting a local process handle the
   request and return a dynamic response.
 
-**Secrets at rest.** Notify URLs (and other secrets) are encrypted with
-**AES-256-GCM**; the key is generated on first run and stored as
-`secret.key` in the data directory (mode `0600`).
+### Platform
 
-> The `--action-allow` / `--action-deny` / `--action-allow-internal` policy
-> applies to **all** server-side outbound requests — Custom Actions, replay, and
-> schedule monitoring — and is enforced against the resolved IP.
+- **Modern UI** — React + TypeScript SPA embedded in the binary, system-aware
+  light/dark theme with a persisted toggle, responsive from phone to desktop.
+- **REST API first** — every UI action maps to a documented `/api/v1` endpoint;
+  interactive Swagger UI at `/api/docs`.
+- **Operations** — CSV export of captured requests, Prometheus metrics at
+  `/metrics`, JSON health at `/health`.
+- **Single binary** — pure-Go, `CGO_ENABLED=0`, SQLite (or Postgres) storage, the
+  React UI embedded via `embed.FS`.
+
+## Security
+
+- **Secrets at rest** — notify URLs and other credentials are encrypted with
+  **AES-256-GCM**; the key is generated on first run and stored as `secret.key`
+  in the data directory (mode `0600`).
+- **SSRF protection** — every server-side outbound request (Custom Actions
+  `http_request`/`script`, replay, schedule monitoring) goes through one guard.
+  Internal targets (loopback, link-local incl. cloud metadata `169.254.169.254`,
+  private and CGNAT ranges) are **blocked by default**, enforced against the
+  *resolved* IP and re-checked across redirects. Scope hosts with
+  `--action-allow` / `--action-deny`, or permit internal targets with
+  `--action-allow-internal`.
+- **No credential leakage** — replay and `forward` mode strip `Authorization` /
+  `Cookie` / `Proxy-Authorization` headers; captured email HTML renders in a
+  sandboxed iframe; CSV export neutralises spreadsheet formula injection.
 
 ## Quick start
 
@@ -198,21 +202,21 @@ It appears in the inbox instantly.
 | Flag | Env | Default | Purpose |
 | --- | --- | --- | --- |
 | `--port` | `RAPTOR_PORT` | `8084` | HTTP port (app + capture + API) |
-| `--smtp-port` | `RAPTOR_SMTP_PORT` | `2525` | Inbound email listener (Phase 3) |
-| `--dns-port` | `RAPTOR_DNS_PORT` | `5354` | Inbound DNS listener (Phase 3) |
+| `--smtp-port` | `RAPTOR_SMTP_PORT` | `2525` | Inbound email listener |
+| `--dns-port` | `RAPTOR_DNS_PORT` | `5354` | Inbound DNS listener |
 | `--data` | `RAPTOR_DATA` | `/data` | SQLite + uploaded files directory |
 | `--db-driver` | `RAPTOR_DB_DRIVER` | `sqlite` | `sqlite` \| `postgres` |
 | `--db-dsn` | `RAPTOR_DB_DSN` | — | Postgres DSN when `--db-driver=postgres` |
 | `--base-url` | `RAPTOR_BASE_URL` | `http://localhost:8084` | External base URL for copyable links |
-| `--email-domain` | `RAPTOR_EMAIL_DOMAIN` | `emailhook.site` | Inbound email suffix (Phase 3) |
-| `--dns-domain` | `RAPTOR_DNS_DOMAIN` | `dnshook.site` | Inbound DNS suffix (Phase 3) |
+| `--email-domain` | `RAPTOR_EMAIL_DOMAIN` | `emailhook.site` | Inbound email suffix |
+| `--dns-domain` | `RAPTOR_DNS_DOMAIN` | `dnshook.site` | Inbound DNS suffix |
 | `--max-requests` | `RAPTOR_MAX_REQUESTS` | `0` | Per-URL stored-request cap (`0` = unlimited) |
 | `--geoip-db` | `RAPTOR_GEOIP_DB` | — | Optional MaxMind GeoLite2 DB for request geo |
 | `--log-level` | `RAPTOR_LOG_LEVEL` | `info` | `debug` \| `info` \| `warning` \| `error` |
-| `--require-auth` | `RAPTOR_REQUIRE_AUTH` | `false` | Gate the management API behind an API key (Phase 6) |
-| `--action-allow` | `RAPTOR_ACTION_ALLOW` | — | Comma-separated allow-list of hosts for outbound actions |
-| `--action-deny` | `RAPTOR_ACTION_DENY` | — | Comma-separated deny-list of hosts for outbound actions |
-| `--action-allow-internal` | `RAPTOR_ACTION_ALLOW_INTERNAL` | `false` | Permit outbound actions to reach internal/loopback hosts |
+| `--require-auth` | `RAPTOR_REQUIRE_AUTH` | `false` | Gate the management API behind an API key |
+| `--action-allow` | `RAPTOR_ACTION_ALLOW` | — | Comma-separated allow-list of hosts for outbound requests |
+| `--action-deny` | `RAPTOR_ACTION_DENY` | — | Comma-separated deny-list of hosts for outbound requests |
+| `--action-allow-internal` | `RAPTOR_ACTION_ALLOW_INTERNAL` | `false` | Permit outbound requests to reach internal/loopback hosts |
 | `--version` | — | — | Print version and exit |
 
 **Precedence:** environment variable → `--flag` → built-in default (an env var,
@@ -264,22 +268,6 @@ cd web && npm run build   # produce the embedded UI bundle
 
 The frontend lives in [`web/`](web) (React + TypeScript + Vite); its build output
 is embedded into the Go binary via `embed.FS`, so production ships a single file.
-
-## Roadmap
-
-| Phase | Scope |
-| --- | --- |
-| **1 — Core capture** *(done)* | URLs, HTTP capture, inspection API, real-time SPA inbox, default responses, CSV, metrics |
-| **2 — Response control** *(done)* | Request search DSL, subset delete, groups, control panel |
-| **3 — Email + DNS** *(done)* | Inbound SMTP (`@emailhook`) capture with DKIM/SPF/DMARC, inbound DNS (`.dnshook`) capture |
-| **4 — Custom Actions** *(done)* | Action chain engine, variables, conditions, extraction, http_request, JS scripting, run log + replay |
-| **5 — Schedules & replay** *(done)* | Cron schedules with status/keyword/uptime/SSL alerting, request replay, CLI forwarding |
-| 6 — Accounts & org | API keys, multi-user, SAML SSO, custom domains |
-
-> Phase 4 ships the action engine and a core action set; queued/delayed/repeating
-> execution and the integration catalogue (Slack, S3, SFTP, send-email, mock,
-> CSV/PDF/image, templates, …) build on the same `Action` interface and are
-> tracked for a follow-up.
 
 ## License
 
