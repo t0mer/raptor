@@ -7,11 +7,16 @@ services:
         VERSION: dev
     ports:
       - "8084:8084" # app + capture + API
-      - "2525:2525" # inbound email (Phase 3)
-      - "5354:5354/udp" # inbound DNS  (Phase 3)
+      - "2525:2525" # inbound email
+      - "5354:5354/udp" # inbound DNS
     volumes:
-      - ./data:/data
+      # Named volume (not a host bind mount): it inherits the image's /data
+      # ownership so the non-root container user can write the SQLite DB.
+      - raptor-data:/data
     environment:
       RAPTOR_BASE_URL: http://localhost:8084
       RAPTOR_LOG_LEVEL: info
     restart: unless-stopped
+
+volumes:
+  raptor-data:
