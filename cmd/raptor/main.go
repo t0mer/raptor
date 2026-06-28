@@ -61,14 +61,22 @@ func run(cfg config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("create data dir: %w", err)
 	}
 
-	if cfg.DBDriver != "sqlite" {
-		return fmt.Errorf("db driver %q not yet supported", cfg.DBDriver)
-	}
-	st, err := store.Open(filepath.Join(cfg.Data, "raptor.db"))
+	st, err := store.OpenWith(store.Options{
+		Driver:   cfg.DBDriver,
+		Path:     filepath.Join(cfg.Data, "raptor.db"),
+		Host:     cfg.DBHost,
+		Port:     cfg.DBPort,
+		Name:     cfg.DBName,
+		User:     cfg.DBUser,
+		Password: cfg.DBPassword,
+		SSLMode:  cfg.DBSSLMode,
+		DSN:      cfg.DBDSN,
+	})
 	if err != nil {
-		return fmt.Errorf("open store: %w", err)
+		return fmt.Errorf("open store (%s): %w", cfg.DBDriver, err)
 	}
 	defer st.Close()
+	logger.Info("database ready", "driver", st.Driver())
 
 	// Secrets-at-rest: load (or create) the AES-256-GCM key and enable
 	// transparent encryption of secret columns (notify URLs, etc.).

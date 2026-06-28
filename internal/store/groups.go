@@ -13,8 +13,8 @@ func (s *Store) CreateGroup(ctx context.Context, g *models.Group) error {
 	if g.CreatedAt.IsZero() {
 		g.CreatedAt = time.Now().UTC()
 	}
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO groups (id, name, color, created_at) VALUES (?,?,?,?)`,
+	_, err := s.exec(ctx,
+		`INSERT INTO "groups" (id, name, color, created_at) VALUES (?,?,?,?)`,
 		g.ID, g.Name, g.Color, nowRFC3339(g.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("insert group: %w", err)
@@ -24,15 +24,15 @@ func (s *Store) CreateGroup(ctx context.Context, g *models.Group) error {
 
 // GetGroup returns a group by id.
 func (s *Store) GetGroup(ctx context.Context, id string) (*models.Group, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT id, name, color, created_at FROM groups WHERE id = ?`, id)
+	row := s.queryRow(ctx,
+		`SELECT id, name, color, created_at FROM "groups" WHERE id = ?`, id)
 	return scanGroup(row)
 }
 
 // ListGroups returns all groups, newest first.
 func (s *Store) ListGroups(ctx context.Context) ([]*models.Group, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, name, color, created_at FROM groups ORDER BY created_at DESC`)
+	rows, err := s.query(ctx,
+		`SELECT id, name, color, created_at FROM "groups" ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("query groups: %w", err)
 	}
@@ -51,8 +51,8 @@ func (s *Store) ListGroups(ctx context.Context) ([]*models.Group, error) {
 
 // UpdateGroup persists a group's mutable fields.
 func (s *Store) UpdateGroup(ctx context.Context, g *models.Group) error {
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE groups SET name = ?, color = ? WHERE id = ?`, g.Name, g.Color, g.ID)
+	res, err := s.exec(ctx,
+		`UPDATE "groups" SET name = ?, color = ? WHERE id = ?`, g.Name, g.Color, g.ID)
 	if err != nil {
 		return fmt.Errorf("update group: %w", err)
 	}
@@ -68,10 +68,10 @@ func (s *Store) DeleteGroup(ctx context.Context, id string) error {
 	}
 	defer tx.Rollback() //nolint:errcheck // no-op after commit
 
-	if _, err := tx.ExecContext(ctx, `UPDATE tokens SET group_id = '' WHERE group_id = ?`, id); err != nil {
+	if _, err := tx.ExecContext(ctx, s.rebind(`UPDATE tokens SET group_id = '' WHERE group_id = ?`), id); err != nil {
 		return fmt.Errorf("clear token groups: %w", err)
 	}
-	res, err := tx.ExecContext(ctx, `DELETE FROM groups WHERE id = ?`, id)
+	res, err := tx.ExecContext(ctx, s.rebind(`DELETE FROM "groups" WHERE id = ?`), id)
 	if err != nil {
 		return fmt.Errorf("delete group: %w", err)
 	}
