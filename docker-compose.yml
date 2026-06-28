@@ -11,11 +11,25 @@ services:
       - "5354:5354/udp" # inbound DNS
     volumes:
       # Named volume (not a host bind mount): it inherits the image's /data
-      # ownership so the non-root container user can write the SQLite DB.
+      # ownership so the non-root container user can write to it. /data holds the
+      # SQLite database AND the AES key (secret.key) used to encrypt secrets —
+      # keep it to retain accounts, captured data, and notify-URL secrets.
       - raptor-data:/data
     environment:
       RAPTOR_BASE_URL: http://localhost:8084
       RAPTOR_LOG_LEVEL: info
+      # --- Accounts (optional; default is anonymous-by-default + open signups) ---
+      # RAPTOR_REQUIRE_AUTH: "true"            # private mode: require login, no anonymous access
+      # RAPTOR_ALLOW_REGISTRATION: "false"     # lock new signups (existing users can still log in)
+      # RAPTOR_ADMIN_EMAIL: admin@example.com  # seed an initial admin on first run
+      # RAPTOR_ADMIN_PASSWORD: change-me-please
+      # --- Inbound email / DNS suffixes (optional) ---
+      # RAPTOR_EMAIL_DOMAIN: emailhook.site
+      # RAPTOR_DNS_DOMAIN: dnshook.site
+      # --- Custom Actions outbound SSRF policy (optional) ---
+      # RAPTOR_ACTION_ALLOW: "example.com,hooks.internal"
+      # RAPTOR_ACTION_DENY: "169.254.169.254"
+      # RAPTOR_ACTION_ALLOW_INTERNAL: "true"   # permit actions/replay/schedules to reach internal hosts
     restart: unless-stopped
 
 volumes:
