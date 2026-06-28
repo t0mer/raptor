@@ -111,6 +111,7 @@ export interface User {
 export interface AuthStatus {
   bootstrapped: boolean
   require_auth: boolean
+  allow_registration?: boolean
   authenticated: boolean
   user?: User
 }
@@ -256,6 +257,8 @@ export const api = {
     req<User>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   bootstrap: (email: string, password: string) =>
     req<User>('/auth/bootstrap', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  register: (email: string, password: string) =>
+    req<User>('/auth/register', { method: 'POST', body: JSON.stringify({ email, password }) }),
   logout: () => req<void>('/auth/logout', { method: 'POST' }),
 
   listAPIKeys: () => req<{ data: APIKey[] }>('/account/api-keys').then((r) => r.data ?? []),

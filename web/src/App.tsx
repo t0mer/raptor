@@ -55,16 +55,38 @@ export default function App() {
 
   if (!status) return <div className="min-h-screen bg-bg" />
 
-  if (status.require_auth && !status.bootstrapped) {
-    return <Login mode="bootstrap" onAuthed={load} />
-  }
+  // Private mode: must authenticate. Default mode renders the workspace and lets
+  // visitors stay anonymous (their identity is a cookie).
   if (status.require_auth && !status.authenticated) {
-    return <Login mode="login" onAuthed={load} />
+    return (
+      <Login
+        bootstrapped={status.bootstrapped}
+        allowRegistration={status.allow_registration ?? true}
+        onAuthed={load}
+      />
+    )
   }
-  return <Workspace currentUser={status.user} onLogout={load} />
+  return (
+    <Workspace
+      currentUser={status.user}
+      bootstrapped={status.bootstrapped}
+      allowRegistration={status.allow_registration ?? true}
+      onAuthChange={load}
+    />
+  )
 }
 
-function Workspace({ currentUser, onLogout }: { currentUser?: User; onLogout: () => void }) {
+function Workspace({
+  currentUser,
+  bootstrapped,
+  allowRegistration,
+  onAuthChange,
+}: {
+  currentUser?: User
+  bootstrapped: boolean
+  allowRegistration: boolean
+  onAuthChange: () => void
+}) {
   const { theme, toggle } = useTheme()
   const init = initialState()
   const [tokens, setTokens] = useState<Token[]>([])
@@ -80,17 +102,20 @@ function Workspace({ currentUser, onLogout }: { currentUser?: User; onLogout: ()
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [showAuth, setShowAuth] = useState(false)
   const queryRef = useRef('')
 
   const activeToken = tokens.find((t) => t.uuid === activeId) ?? null
 
-  const loadTokens = useCallback(async () => {
+  const loadTokens = useCallback(async (): Promise<Token[]> => {
     try {
       const list = await api.listTokens()
       setTokens(list)
       setActiveId((cur) => cur ?? list[0]?.uuid ?? null)
+      return list
     } catch (e) {
       setError(e instanceof Error ? e.message : 'failed to load')
+      return []
     }
   }, [])
 
@@ -102,10 +127,30 @@ function Workspace({ currentUser, onLogout }: { currentUser?: User; onLogout: ()
     }
   }, [])
 
+  // Load tokens/groups on mount and whenever the identity changes (login/logout).
+  // On first visit with no URLs, auto-create one (the webhook.site experience).
+  const identity = currentUser?.id ?? 'anon'
   useEffect(() => {
-    void loadTokens()
-    void loadGroups()
-  }, [loadTokens, loadGroups])
+    let cancelled = false
+    void (async () => {
+      const list = await loadTokens()
+      await loadGroups()
+      if (!cancelled && list.length === 0) {
+        try {
+          const tok = await api.createToken({})
+          if (!cancelled) {
+            setTokens([tok])
+            setActiveId(tok.uuid)
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [identity, loadTokens, loadGroups])
 
   const loadRequests = useCallback(async (id: string, q: string) => {
     try {
@@ -196,7 +241,7 @@ function Workspace({ currentUser, onLogout }: { currentUser?: User; onLogout: ()
     try {
       await api.logout()
     } finally {
-      onLogout()
+      onAuthChange()
     }
   }
 
@@ -265,6 +310,7 @@ function Workspace({ currentUser, onLogout }: { currentUser?: User; onLogout: ()
         currentUser={currentUser}
         onAccount={openAccount}
         onLogout={handleLogout}
+        onSignIn={() => setShowAuth(true)}
       />
 
       {error && (
@@ -397,6 +443,18 @@ function Workspace({ currentUser, onLogout }: { currentUser?: User; onLogout: ()
 
       {showReplay && activeToken && (
         <ReplayDialog tokenId={activeToken.uuid} query={query} onClose={() => setShowReplay(false)} />
+      )}
+
+      {showAuth && (
+        <Login
+          bootstrapped={bootstrapped}
+          allowRegistration={allowRegistration}
+          onClose={() => setShowAuth(false)}
+          onAuthed={() => {
+            setShowAuth(false)
+            onAuthChange()
+          }}
+        />
       )}
     </div>
   )

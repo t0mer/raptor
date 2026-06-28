@@ -11,6 +11,7 @@ interface Props {
   currentUser?: User
   onAccount: () => void
   onLogout: () => void
+  onSignIn: () => void
 }
 
 export function Navbar({
@@ -22,6 +23,7 @@ export function Navbar({
   currentUser,
   onAccount,
   onLogout,
+  onSignIn,
 }: Props) {
   return (
     <header className="flex items-center gap-3 border-b border-border bg-surface px-4 h-14 shrink-0">
@@ -61,7 +63,7 @@ export function Navbar({
           {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </button>
 
-        {currentUser && (
+        {currentUser ? (
           <div className="flex items-center gap-1 border-l border-border pl-2 ml-1">
             <button
               onClick={onAccount}
@@ -77,6 +79,13 @@ export function Navbar({
               Sign out
             </button>
           </div>
+        ) : (
+          <button
+            onClick={onSignIn}
+            className="text-xs text-muted hover:text-text px-2 py-1 rounded-lg hover:bg-surface-2 border-l border-border ml-1 pl-3"
+          >
+            Sign in
+          </button>
         )}
       </div>
     </header>
