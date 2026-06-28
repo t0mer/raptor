@@ -20,12 +20,27 @@ import (
 
 // Config holds the fully resolved runtime configuration.
 type Config struct {
-	Port        int    // --port / RAPTOR_PORT
-	SMTPPort    int    // --smtp-port / RAPTOR_SMTP_PORT
-	DNSPort     int    // --dns-port / RAPTOR_DNS_PORT
-	Data        string // --data / RAPTOR_DATA
-	DBDriver    string // --db-driver / RAPTOR_DB_DRIVER
-	DBDSN       string // --db-dsn / RAPTOR_DB_DSN
+	Port     int    // --port / RAPTOR_PORT
+	SMTPPort int    // --smtp-port / RAPTOR_SMTP_PORT
+	DNSPort  int    // --dns-port / RAPTOR_DNS_PORT
+	Data     string // --data / RAPTOR_DATA
+	DBDriver string // --db-driver / RAPTOR_DB_DRIVER
+
+	// Structured connection settings for the postgres/mysql drivers. Ignored for
+	// sqlite (which stores its file under --data). DBPassword and DBDSN are
+	// secrets, so they are read from the environment only — never exposed as
+	// command-line flags (see CLAUDE.md §4 / guidelines/security.md).
+	DBHost     string // --db-host / RAPTOR_DB_HOST
+	DBPort     int    // --db-port / RAPTOR_DB_PORT
+	DBName     string // --db-name / RAPTOR_DB_NAME
+	DBUser     string // --db-user / RAPTOR_DB_USER
+	DBPassword string // RAPTOR_DB_PASSWORD (env only)
+	DBSSLMode  string // --db-sslmode / RAPTOR_DB_SSLMODE (postgres)
+
+	// DBDSN, when set, fully overrides the structured settings above with a
+	// ready-made driver DSN. Env only (it embeds credentials).
+	DBDSN string // RAPTOR_DB_DSN
+
 	BaseURL     string // --base-url / RAPTOR_BASE_URL
 	EmailDomain string // --email-domain / RAPTOR_EMAIL_DOMAIN
 	DNSDomain   string // --dns-domain / RAPTOR_DNS_DOMAIN
@@ -62,6 +77,8 @@ func Defaults() Config {
 		DNSPort:           5354,
 		Data:              "/data",
 		DBDriver:          "sqlite",
+		DBName:            "raptor",
+		DBSSLMode:         "disable",
 		BaseURL:           "http://localhost:8084",
 		EmailDomain:       "emailhook.site",
 		DNSDomain:         "dnshook.site",
@@ -83,8 +100,12 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 	fs.IntVar(&cfg.SMTPPort, "smtp-port", cfg.SMTPPort, "inbound email listener port")
 	fs.IntVar(&cfg.DNSPort, "dns-port", cfg.DNSPort, "inbound DNS listener port (UDP+TCP)")
 	fs.StringVar(&cfg.Data, "data", cfg.Data, "data directory (SQLite + uploaded files)")
-	fs.StringVar(&cfg.DBDriver, "db-driver", cfg.DBDriver, "database driver: sqlite | postgres")
-	fs.StringVar(&cfg.DBDSN, "db-dsn", cfg.DBDSN, "Postgres DSN when --db-driver=postgres")
+	fs.StringVar(&cfg.DBDriver, "db-driver", cfg.DBDriver, "database driver: sqlite | postgres | mysql")
+	fs.StringVar(&cfg.DBHost, "db-host", cfg.DBHost, "database host (postgres/mysql)")
+	fs.IntVar(&cfg.DBPort, "db-port", cfg.DBPort, "database port (postgres/mysql; 0 = driver default)")
+	fs.StringVar(&cfg.DBName, "db-name", cfg.DBName, "database name (postgres/mysql)")
+	fs.StringVar(&cfg.DBUser, "db-user", cfg.DBUser, "database user (postgres/mysql)")
+	fs.StringVar(&cfg.DBSSLMode, "db-sslmode", cfg.DBSSLMode, "postgres sslmode: disable|require|verify-ca|verify-full")
 	fs.StringVar(&cfg.BaseURL, "base-url", cfg.BaseURL, "external base URL for copyable links")
 	fs.StringVar(&cfg.EmailDomain, "email-domain", cfg.EmailDomain, "inbound email suffix")
 	fs.StringVar(&cfg.DNSDomain, "dns-domain", cfg.DNSDomain, "inbound DNS suffix")
@@ -123,8 +144,14 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 	if !validLogLevel(cfg.LogLevel) {
 		return Config{}, fmt.Errorf("invalid --log-level %q: want debug|info|warning|error", cfg.LogLevel)
 	}
-	if cfg.DBDriver != "sqlite" && cfg.DBDriver != "postgres" {
-		return Config{}, fmt.Errorf("invalid --db-driver %q: want sqlite|postgres", cfg.DBDriver)
+	switch cfg.DBDriver {
+	case "sqlite", "postgres", "mysql":
+	default:
+		return Config{}, fmt.Errorf("invalid --db-driver %q: want sqlite|postgres|mysql", cfg.DBDriver)
+	}
+	// The networked drivers need a target host (unless a full DSN is supplied).
+	if cfg.DBDriver != "sqlite" && cfg.DBDSN == "" && cfg.DBHost == "" {
+		return Config{}, fmt.Errorf("--db-driver %s requires RAPTOR_DB_HOST (or RAPTOR_DB_DSN)", cfg.DBDriver)
 	}
 
 	return cfg, nil
@@ -149,8 +176,16 @@ func applyEnv(cfg *Config, getenv func(string) string) error {
 	if err := envBool(getenv, "RAPTOR_REQUIRE_AUTH", &cfg.RequireAuth); err != nil {
 		return err
 	}
+	if err := envInt(getenv, "RAPTOR_DB_PORT", &cfg.DBPort); err != nil {
+		return err
+	}
 	envStr(getenv, "RAPTOR_DATA", &cfg.Data)
 	envStr(getenv, "RAPTOR_DB_DRIVER", &cfg.DBDriver)
+	envStr(getenv, "RAPTOR_DB_HOST", &cfg.DBHost)
+	envStr(getenv, "RAPTOR_DB_NAME", &cfg.DBName)
+	envStr(getenv, "RAPTOR_DB_USER", &cfg.DBUser)
+	envStr(getenv, "RAPTOR_DB_PASSWORD", &cfg.DBPassword)
+	envStr(getenv, "RAPTOR_DB_SSLMODE", &cfg.DBSSLMode)
 	envStr(getenv, "RAPTOR_DB_DSN", &cfg.DBDSN)
 	envStr(getenv, "RAPTOR_BASE_URL", &cfg.BaseURL)
 	envStr(getenv, "RAPTOR_EMAIL_DOMAIN", &cfg.EmailDomain)
