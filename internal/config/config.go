@@ -34,6 +34,11 @@ type Config struct {
 	LogLevel    string // --log-level / RAPTOR_LOG_LEVEL
 	RequireAuth bool   // --require-auth / RAPTOR_REQUIRE_AUTH
 
+	// AllowRegistration permits new users to self-register an account. Disable it
+	// to lock signups while still allowing existing users to log in. The very
+	// first account can always be created so the instance can be set up.
+	AllowRegistration bool // --allow-registration / RAPTOR_ALLOW_REGISTRATION
+
 	// Action SSRF lists (comma-separated host suffixes / CIDRs) for
 	// http_request/script actions. ActionAllow, when set, is a strict allow-list.
 	ActionAllow         []string // --action-allow / RAPTOR_ACTION_ALLOW
@@ -52,17 +57,18 @@ type Config struct {
 // Defaults returns a Config populated with the built-in default values.
 func Defaults() Config {
 	return Config{
-		Port:        8084,
-		SMTPPort:    2525,
-		DNSPort:     5354,
-		Data:        "/data",
-		DBDriver:    "sqlite",
-		BaseURL:     "http://localhost:8084",
-		EmailDomain: "emailhook.site",
-		DNSDomain:   "dnshook.site",
-		MaxRequests: 0,
-		LogLevel:    "info",
-		RequireAuth: false,
+		Port:              8084,
+		SMTPPort:          2525,
+		DNSPort:           5354,
+		Data:              "/data",
+		DBDriver:          "sqlite",
+		BaseURL:           "http://localhost:8084",
+		EmailDomain:       "emailhook.site",
+		DNSDomain:         "dnshook.site",
+		MaxRequests:       0,
+		LogLevel:          "info",
+		RequireAuth:       false,
+		AllowRegistration: true,
 	}
 }
 
@@ -85,7 +91,8 @@ func Load(args []string, getenv func(string) string) (Config, error) {
 	fs.IntVar(&cfg.MaxRequests, "max-requests", cfg.MaxRequests, "max stored requests per token (0 = unlimited)")
 	fs.StringVar(&cfg.GeoIPDB, "geoip-db", cfg.GeoIPDB, "optional MaxMind GeoLite2 DB path for request geo")
 	fs.StringVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "log level: debug | info | warning | error")
-	fs.BoolVar(&cfg.RequireAuth, "require-auth", cfg.RequireAuth, "gate the management API behind an API key")
+	fs.BoolVar(&cfg.RequireAuth, "require-auth", cfg.RequireAuth, "require login for the management API (no anonymous access)")
+	fs.BoolVar(&cfg.AllowRegistration, "allow-registration", cfg.AllowRegistration, "allow new users to self-register")
 	allow := fs.String("action-allow", "", "comma-separated allow-list of hosts for outbound actions")
 	deny := fs.String("action-deny", "", "comma-separated deny-list of hosts for outbound actions")
 	fs.BoolVar(&cfg.ActionAllowInternal, "action-allow-internal", false, "permit outbound actions to reach internal/loopback hosts")
@@ -134,6 +141,9 @@ func applyEnv(cfg *Config, getenv func(string) string) error {
 		return err
 	}
 	if err := envInt(getenv, "RAPTOR_MAX_REQUESTS", &cfg.MaxRequests); err != nil {
+		return err
+	}
+	if err := envBool(getenv, "RAPTOR_ALLOW_REGISTRATION", &cfg.AllowRegistration); err != nil {
 		return err
 	}
 	if err := envBool(getenv, "RAPTOR_REQUIRE_AUTH", &cfg.RequireAuth); err != nil {

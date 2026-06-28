@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -70,6 +71,52 @@ func createToken(t *testing.T, c *http.Client, base string) string {
 	}
 	json.NewDecoder(res.Body).Decode(&tok)
 	return tok.UUID
+}
+
+// TestOwnerCookieCannotImpersonateUser verifies the IDOR guard: a client cannot
+// set the anonymous owner cookie to a registered user's id to claim their URLs.
+func TestOwnerCookieCannotImpersonateUser(t *testing.T) {
+	ts := newTestServer(t) // default (anonymous-capable) mode
+	base := ts.URL
+
+	admin := newClient(t)
+	r := postJSON(t, admin, base+"/api/v1/auth/register", `{"email":"admin@x.com","password":"supersecret"}`)
+	r.Body.Close()
+	r = postJSON(t, admin, base+"/api/v1/users", `{"email":"alice@x.com","password":"supersecret","role":"user"}`)
+	var alice struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(r.Body).Decode(&alice)
+	r.Body.Close()
+	if alice.ID == "" {
+		t.Fatal("no alice id returned")
+	}
+
+	aliceCli := newClient(t)
+	lr := postJSON(t, aliceCli, base+"/api/v1/auth/login", `{"email":"alice@x.com","password":"supersecret"}`)
+	lr.Body.Close()
+	tokA := createToken(t, aliceCli, base)
+
+	// Attacker presents an owner cookie equal to alice's user id (a UUID, no
+	// anon- prefix). It must be ignored, not honoured.
+	attacker := newClient(t)
+	u, _ := url.Parse(base)
+	attacker.Jar.SetCookies(u, []*http.Cookie{{Name: auth.OwnerCookie, Value: alice.ID}})
+
+	resList, _ := attacker.Get(base + "/api/v1/tokens")
+	var page struct {
+		Data []json.RawMessage `json:"data"`
+	}
+	json.NewDecoder(resList.Body).Decode(&page)
+	resList.Body.Close()
+	if len(page.Data) != 0 {
+		t.Errorf("spoofed owner cookie listed %d tokens, want 0", len(page.Data))
+	}
+	resGet, _ := attacker.Get(base + "/api/v1/tokens/" + tokA)
+	resGet.Body.Close()
+	if resGet.StatusCode != http.StatusNotFound {
+		t.Errorf("spoofed owner GET = %d, want 404", resGet.StatusCode)
+	}
 }
 
 func TestPerUserURLIsolation(t *testing.T) {

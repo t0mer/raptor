@@ -201,8 +201,21 @@ paths:
                 properties:
                   bootstrapped: { type: boolean }
                   require_auth: { type: boolean }
+                  allow_registration: { type: boolean }
                   authenticated: { type: boolean }
                   user: { $ref: "#/components/schemas/User" }
+  /auth/register:
+    post:
+      summary: Register an account (first one becomes admin; adopts anonymous URLs)
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Credentials" }
+      responses:
+        "201": { description: Account created and signed in }
+        "403": { description: Registration disabled }
   /auth/bootstrap:
     post:
       summary: Create the first admin (only when no users exist)

@@ -48,10 +48,7 @@ func (a *API) createToken(w http.ResponseWriter, r *http.Request) {
 		Premium:            true,
 	}
 	// Assign ownership to the creating user (empty in open mode).
-	owner := ""
-	if u, ok := auth.UserFromContext(r.Context()); ok {
-		owner = u.ID
-	}
+	owner := auth.OwnerFromContext(r.Context())
 
 	// Optionally clone settings from an existing token the caller can access.
 	if body.CloneFrom != nil && *body.CloneFrom != "" {
@@ -85,16 +82,16 @@ func (a *API) createToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) listTokens(w http.ResponseWriter, r *http.Request) {
-	// Non-admin authenticated users see only their own URLs; open mode and admins
-	// see all.
+	// Each owner (anonymous visitor or registered user) sees only their own URLs;
+	// admins see all.
 	var (
 		tokens []*models.Token
 		err    error
 	)
-	if u, ok := auth.UserFromContext(r.Context()); ok && !u.IsAdmin() {
-		tokens, err = a.store.ListTokensForUser(r.Context(), u.ID)
-	} else {
+	if isAdmin(r) {
 		tokens, err = a.store.ListTokens(r.Context())
+	} else {
+		tokens, err = a.store.ListTokensForUser(r.Context(), auth.OwnerFromContext(r.Context()))
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list tokens")
@@ -181,15 +178,21 @@ func (a *API) loadToken(w http.ResponseWriter, r *http.Request) (*models.Token, 
 // canAccessToken reports whether the request's user may manage a token. In open
 // mode (no authenticated user) all access is allowed; admins access everything;
 // otherwise the user must own the token.
+// canAccessToken reports whether the request's owner may manage a token. Admins
+// access everything; otherwise the token must belong to the request's owner
+// (registered user id or anonymous owner id).
 func (a *API) canAccessToken(r *http.Request, tok *models.Token) bool {
+	if isAdmin(r) {
+		return true
+	}
+	owner := auth.OwnerFromContext(r.Context())
+	return owner != "" && tok.UserID == owner
+}
+
+// isAdmin reports whether the request is from a registered admin user.
+func isAdmin(r *http.Request) bool {
 	u, ok := auth.UserFromContext(r.Context())
-	if !ok {
-		return true
-	}
-	if u.IsAdmin() {
-		return true
-	}
-	return tok.UserID == u.ID
+	return ok && u.IsAdmin()
 }
 
 func applyTokenRequest(tok *models.Token, body *tokenRequest) {

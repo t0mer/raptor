@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -60,6 +61,9 @@ func TestHealth(t *testing.T) {
 func TestEndToEndCaptureFlow(t *testing.T) {
 	ts := newTestServer(t)
 	client := ts.Client()
+	// Carry the anonymous owner cookie across requests (like a browser), so the
+	// created URL is visible to the same identity afterwards.
+	client.Jar, _ = cookiejar.New(nil)
 
 	// Create a token.
 	res, err := client.Post(ts.URL+"/api/v1/tokens", "application/json",

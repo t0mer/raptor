@@ -61,16 +61,17 @@ func (s *Server) buildRouter() chi.Router {
 
 	// Management API (versioned).
 	r.Mount("/api/v1", api.New(api.Deps{
-		Store:         s.store,
-		BaseURL:       s.cfg.BaseURL,
-		Hub:           s.hub,
-		Actions:       s.actions,
-		Schedules:     s.schedules,
-		Forwarder:     s.capturer,
-		Guard:         s.guard,
-		Auth:          s.auth,
-		RequireAuth:   s.cfg.RequireAuth,
-		SecureCookies: strings.HasPrefix(s.cfg.BaseURL, "https://"),
+		Store:             s.store,
+		BaseURL:           s.cfg.BaseURL,
+		Hub:               s.hub,
+		Actions:           s.actions,
+		Schedules:         s.schedules,
+		Forwarder:         s.capturer,
+		Guard:             s.guard,
+		Auth:              s.auth,
+		RequireAuth:       s.cfg.RequireAuth,
+		AllowRegistration: s.cfg.AllowRegistration,
+		SecureCookies:     strings.HasPrefix(s.cfg.BaseURL, "https://"),
 	}).Routes())
 
 	// API docs (spec-first source of truth) with an embedded Swagger UI — no

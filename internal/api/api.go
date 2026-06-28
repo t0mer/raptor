@@ -23,30 +23,32 @@ type ResponseForwarder interface {
 
 // Deps bundles the API handler dependencies.
 type Deps struct {
-	Store         *store.Store
-	BaseURL       string
-	Hub           *sse.Hub
-	Actions       *actions.Service
-	Schedules     *schedules.Runner
-	Forwarder     ResponseForwarder
-	Guard         *netguard.Guard
-	Auth          *auth.Service
-	RequireAuth   bool
-	SecureCookies bool
+	Store             *store.Store
+	BaseURL           string
+	Hub               *sse.Hub
+	Actions           *actions.Service
+	Schedules         *schedules.Runner
+	Forwarder         ResponseForwarder
+	Guard             *netguard.Guard
+	Auth              *auth.Service
+	RequireAuth       bool
+	AllowRegistration bool
+	SecureCookies     bool
 }
 
 // API holds dependencies for the management handlers.
 type API struct {
-	store         *store.Store
-	baseURL       string
-	hub           *sse.Hub
-	actions       *actions.Service
-	schedules     *schedules.Runner
-	forwarder     ResponseForwarder
-	guard         *netguard.Guard
-	auth          *auth.Service
-	requireAuth   bool
-	secureCookies bool
+	store             *store.Store
+	baseURL           string
+	hub               *sse.Hub
+	actions           *actions.Service
+	schedules         *schedules.Runner
+	forwarder         ResponseForwarder
+	guard             *netguard.Guard
+	auth              *auth.Service
+	requireAuth       bool
+	allowRegistration bool
+	secureCookies     bool
 }
 
 // New constructs an API.
@@ -56,16 +58,17 @@ func New(d Deps) *API {
 		guard = netguard.New(nil, nil, false)
 	}
 	return &API{
-		store:         d.Store,
-		baseURL:       d.BaseURL,
-		hub:           d.Hub,
-		actions:       d.Actions,
-		schedules:     d.Schedules,
-		forwarder:     d.Forwarder,
-		guard:         guard,
-		auth:          d.Auth,
-		requireAuth:   d.RequireAuth,
-		secureCookies: d.SecureCookies,
+		store:             d.Store,
+		baseURL:           d.BaseURL,
+		hub:               d.Hub,
+		actions:           d.Actions,
+		schedules:         d.Schedules,
+		forwarder:         d.Forwarder,
+		guard:             guard,
+		auth:              d.Auth,
+		requireAuth:       d.RequireAuth,
+		allowRegistration: d.AllowRegistration,
+		secureCookies:     d.SecureCookies,
 	}
 }
 
@@ -73,12 +76,14 @@ func New(d Deps) *API {
 func (a *API) Routes() chi.Router {
 	r := chi.NewRouter()
 
-	// Authenticate every request and gate when --require-auth is on.
-	r.Use(a.auth.Middleware(a.requireAuth))
+	// Authenticate every request, establish the owner identity, and gate when
+	// --require-auth is on.
+	r.Use(a.auth.Middleware(a.requireAuth, a.secureCookies))
 
 	r.Route("/auth", func(r chi.Router) {
 		r.Get("/status", a.authStatus)
 		r.Post("/bootstrap", a.bootstrap)
+		r.Post("/register", a.register)
 		r.Post("/login", a.login)
 		r.Post("/logout", a.logout)
 		r.Get("/me", a.me)
