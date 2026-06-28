@@ -97,9 +97,11 @@ func (s *Service) Middleware(requireAuth, secureCookies bool) func(http.Handler)
 }
 
 // ensureOwnerCookie returns the anonymous owner id from the request cookie,
-// issuing and setting a fresh one when absent.
+// issuing and setting a fresh one when absent. The cookie is accepted only if it
+// carries the anonymous prefix — a client-supplied value cannot impersonate a
+// registered user's id (whose tokens it would otherwise be able to claim).
 func ensureOwnerCookie(w http.ResponseWriter, r *http.Request, secure bool) string {
-	if c, err := r.Cookie(OwnerCookie); err == nil && c.Value != "" {
+	if c, err := r.Cookie(OwnerCookie); err == nil && strings.HasPrefix(c.Value, AnonPrefix) {
 		return c.Value
 	}
 	id := newAnonID()
