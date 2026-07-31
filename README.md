@@ -11,25 +11,25 @@ single static binary with an embedded UI.
 
 | Light | Dark |
 | --- | --- |
-| ![Inbox, light theme](assets/screenshots/inbox-light.png) | ![Inbox, dark theme](assets/screenshots/inbox-dark.png) |
+| ![Inbox, light theme](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/inbox-light.png) | ![Inbox, dark theme](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/inbox-dark.png) |
 
 ### Search & Control Panel
 
 | Search DSL | Control Panel |
 | --- | --- |
-| ![Filtering requests with the search DSL](assets/screenshots/search-dark.png) | ![Control Panel managing URLs and groups](assets/screenshots/control-panel-dark.png) |
+| ![Filtering requests with the search DSL](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/search-dark.png) | ![Control Panel managing URLs and groups](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/control-panel-dark.png) |
 
 ### Email & DNS capture
 
 | Email (rendered + auth checks) | DNS query |
 | --- | --- |
-| ![Captured email with sandboxed HTML body and DKIM/SPF/DMARC results](assets/screenshots/email-detail-dark.png) | ![Captured DNS query detail](assets/screenshots/dns-detail-light.png) |
+| ![Captured email with sandboxed HTML body and DKIM/SPF/DMARC results](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/email-detail-dark.png) | ![Captured DNS query detail](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/dns-detail-light.png) |
 
 ### Custom Actions & Schedules
 
 | Custom Actions | Schedules |
 | --- | --- |
-| ![Custom Actions editor — an ordered chain that runs on every request](assets/screenshots/actions-editor-dark.png) | ![Schedules — cron-driven uptime/keyword/SSL monitoring with alerting](assets/screenshots/schedules-dark.png) |
+| ![Custom Actions editor — an ordered chain that runs on every request](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/actions-editor-dark.png) | ![Schedules — cron-driven uptime/keyword/SSL monitoring with alerting](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/schedules-dark.png) |
 
 ### Accounts & access control
 
@@ -38,13 +38,13 @@ or register to keep your URLs across browsers.
 
 | Anonymous first visit | Sign in / register | Account & users |
 | --- | --- | --- |
-| ![First visit auto-creates a URL, no login needed](assets/screenshots/anon-firstvisit-dark.png) | ![Sign in or register modal](assets/screenshots/signin-modal-dark.png) | ![Account view — API keys and user administration](assets/screenshots/account-dark.png) |
+| ![First visit auto-creates a URL, no login needed](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/anon-firstvisit-dark.png) | ![Sign in or register modal](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/signin-modal-dark.png) | ![Account view — API keys and user administration](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/account-dark.png) |
 
 ### Mobile (responsive)
 
 | Light | Dark |
 | --- | --- |
-| ![Mobile, light theme](assets/screenshots/mobile-light.png) | ![Mobile, dark theme](assets/screenshots/mobile-dark.png) |
+| ![Mobile, light theme](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/mobile-light.png) | ![Mobile, dark theme](https://raw.githubusercontent.com/t0mer/raptor/main/assets/screenshots/mobile-dark.png) |
 
 ## Features
 
